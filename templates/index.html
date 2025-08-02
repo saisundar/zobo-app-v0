@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Zobo - Your AI Friend</title>
+    
+    <!-- Bootstrap CSS (Replit dark theme) -->
+    <link href="https://cdn.replit.com/agent/bootstrap-agent-dark-theme.min.css" rel="stylesheet">
+    
+    <!-- Font Awesome for icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- Google Drive Picker API -->
+    <script src="https://apis.google.com/js/api.js"></script>
+    
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/custom.css') }}">
+</head>
+<body>
+    <div class="container-fluid h-100">
+        <div class="row h-100">
+            <!-- Main Chat Area -->
+            <div class="col-12 col-lg-8 offset-lg-2 d-flex flex-column h-100">
+                
+                <!-- Header -->
+                <header class="bg-dark border-bottom p-3 mb-0">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div class="d-flex align-items-center">
+                            <i class="fas fa-robot text-info me-2 fs-4"></i>
+                            <h1 class="h4 mb-0">Zobo - Your AI Friend</h1>
+                        </div>
+                        <div class="d-flex gap-2">
+                            <button class="btn btn-outline-secondary btn-sm" id="clearBtn" title="Clear conversation">
+                                <i class="fas fa-trash"></i>
+                            </button>
+                            <button class="btn btn-outline-info btn-sm" id="statusBtn" title="Check API status">
+                                <i class="fas fa-info-circle"></i>
+                            </button>
+                        </div>
+                    </div>
+                </header>
+
+                <!-- Status Alert -->
+                <div id="statusAlert" class="alert alert-warning alert-dismissible fade show d-none" role="alert">
+                    <i class="fas fa-exclamation-triangle me-2"></i>
+                    <span id="statusMessage"></span>
+                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                </div>
+
+                <!-- Chat Messages Container -->
+                <div class="flex-grow-1 overflow-auto" id="chatContainer">
+                    <div class="container py-3">
+                        <div id="messagesArea">
+                            <!-- Welcome message -->
+                            <div class="message-bubble assistant-message mb-3">
+                                <div class="d-flex align-items-start">
+                                    <div class="avatar bg-info rounded-circle me-3 d-flex align-items-center justify-content-center">
+                                        <i class="fas fa-robot text-white"></i>
+                                    </div>
+                                    <div class="message-content">
+                                        <div class="message-header mb-1">
+                                            <strong>Zobo</strong>
+                                            <small class="text-muted ms-2">Your AI Friend</small>
+                                        </div>
+                                        <div class="message-text">
+                                            Hey there! I'm Zobo, your AI friend! Think of me as that buddy who's always ready to chat, help out, or just listen. Whether you want to talk about your day, work through problems together, or explore ideas - I'm here for you. What's on your mind?
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Loading indicator -->
+                        <div id="loadingIndicator" class="message-bubble assistant-message mb-3 d-none">
+                            <div class="d-flex align-items-start">
+                                <div class="avatar bg-info rounded-circle me-3 d-flex align-items-center justify-content-center">
+                                    <i class="fas fa-robot text-white"></i>
+                                </div>
+                                <div class="message-content">
+                                    <div class="message-header mb-1">
+                                        <strong>Zobo</strong>
+                                        <small class="text-muted ms-2">Your AI Friend</small>
+                                    </div>
+                                    <div class="message-text">
+                                        <div class="typing-indicator">
+                                            <span></span>
+                                            <span></span>
+                                            <span></span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Message Input Area -->
+                <div class="bg-dark border-top p-3">
+                    <form id="chatForm" class="row g-2">
+                        <div class="col">
+                            <div class="input-group">
+                                <button class="btn btn-outline-secondary" type="button" id="attachBtn" data-bs-toggle="dropdown" aria-expanded="false" title="Attach files">
+                                    <i class="fas fa-plus"></i>
+                                </button>
+                                <ul class="dropdown-menu" id="attachMenu">
+                                    <li><a class="dropdown-item" href="#" id="localFileBtn"><i class="fas fa-file me-2"></i>Connect File to Zobo</a></li>
+                                    <li><a class="dropdown-item" href="#" id="oneDriveBtn"><i class="fab fa-microsoft me-2"></i>OneDrive</a></li>
+                                    <li><a class="dropdown-item" href="#" id="addLinkBtn"><i class="fas fa-link me-2"></i>Add Link</a></li>
+                                </ul>
+                                <textarea 
+                                    id="messageInput" 
+                                    class="form-control" 
+                                    placeholder="Type your message here... (Press Ctrl+Enter to send)"
+                                    rows="1"
+                                    style="resize: none;"
+                                    maxlength="2000"
+                                ></textarea>
+                                <button class="btn btn-primary" type="submit" id="sendBtn">
+                                    <i class="fas fa-paper-plane"></i>
+                                </button>
+                            </div>
+                            <!-- Hidden file input -->
+                            <input type="file" id="fileInput" style="display: none;" multiple accept=".txt,.pdf,.doc,.docx,.jpg,.jpeg,.png,.gif">
+                        </div>
+                            <small class="text-muted">
+                                <span id="charCount">0</span>/2000 characters
+                            </small>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    
+    <!-- Custom JavaScript -->
+    <script src="{{ url_for('static', filename='js/chat.js') }}"></script>
+</body>
+</html>
