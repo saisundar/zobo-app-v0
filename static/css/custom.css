@@ -1,0 +1,205 @@
+/* Custom styles for chat interface */
+html, body {
+    height: 100%;
+}
+
+/* Chat message bubbles */
+.message-bubble {
+    max-width: 100%;
+    word-wrap: break-word;
+}
+
+.user-message {
+    margin-left: auto;
+    margin-right: 0;
+}
+
+.assistant-message {
+    margin-left: 0;
+    margin-right: auto;
+}
+
+.avatar {
+    width: 40px;
+    height: 40px;
+    min-width: 40px;
+    font-size: 0.9rem;
+}
+
+.message-content {
+    flex: 1;
+    min-width: 0;
+}
+
+.message-text {
+    background: var(--bs-secondary);
+    padding: 0.75rem 1rem;
+    border-radius: 1rem;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+.user-message .message-text {
+    background: var(--bs-primary);
+    color: white;
+}
+
+.message-header {
+    font-size: 0.85rem;
+}
+
+/* Typing indicator animation */
+.typing-indicator {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 0.5rem 0;
+}
+
+.typing-indicator span {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background-color: var(--bs-info);
+    animation: typing 1.4s infinite ease-in-out;
+}
+
+.typing-indicator span:nth-child(1) {
+    animation-delay: -0.32s;
+}
+
+.typing-indicator span:nth-child(2) {
+    animation-delay: -0.16s;
+}
+
+@keyframes typing {
+    0%, 80%, 100% {
+        transform: scale(0.8);
+        opacity: 0.5;
+    }
+    40% {
+        transform: scale(1);
+        opacity: 1;
+    }
+}
+
+/* Scrollbar styling for chat container */
+#chatContainer {
+    scrollbar-width: thin;
+    scrollbar-color: var(--bs-secondary) transparent;
+}
+
+#chatContainer::-webkit-scrollbar {
+    width: 6px;
+}
+
+#chatContainer::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+#chatContainer::-webkit-scrollbar-thumb {
+    background: var(--bs-secondary);
+    border-radius: 3px;
+}
+
+#chatContainer::-webkit-scrollbar-thumb:hover {
+    background: var(--bs-secondary);
+}
+
+/* Message input auto-resize */
+#messageInput {
+    min-height: 38px;
+    max-height: 120px;
+    transition: height 0.2s ease;
+}
+
+/* Button states */
+#sendBtn:disabled {
+    opacity: 0.6;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .avatar {
+        width: 32px;
+        height: 32px;
+        min-width: 32px;
+        font-size: 0.8rem;
+    }
+    
+    .message-text {
+        padding: 0.5rem 0.75rem;
+        font-size: 0.9rem;
+    }
+    
+    header .h4 {
+        font-size: 1.1rem;
+    }
+}
+
+/* Error message styling */
+.error-message .message-text {
+    background: var(--bs-danger);
+    color: white;
+}
+
+/* Success message styling */
+.success-message .message-text {
+    background: var(--bs-success);
+    color: white;
+}
+
+/* Code block styling */
+.message-text pre {
+    background: rgba(0, 0, 0, 0.3);
+    padding: 0.5rem;
+    border-radius: 0.375rem;
+    margin: 0.5rem 0;
+    overflow-x: auto;
+}
+
+.message-text code {
+    background: rgba(0, 0, 0, 0.3);
+    padding: 0.125rem 0.25rem;
+    border-radius: 0.25rem;
+    font-size: 0.9em;
+}
+
+/* File attachment styling */
+.attached-files-display {
+    max-height: 100px;
+    overflow-y: auto;
+}
+
+.attached-file-item {
+    font-size: 0.85rem;
+    max-width: 200px;
+}
+
+.attached-file-item .file-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 120px;
+}
+
+.attached-file-item .btn-close {
+    --bs-btn-close-bg: none;
+    font-size: 0.7rem;
+    width: 0.8rem;
+    height: 0.8rem;
+}
+
+/* Dropdown menu positioning for attach button */
+#attachBtn + .dropdown-menu {
+    bottom: 100%;
+    top: auto;
+    margin-bottom: 0.25rem;
+}
+
+/* Make attach button square */
+#attachBtn {
+    border-top-right-radius: 0;
+    border-bottom-right-radius: 0;
+    border-right: none;
+}
