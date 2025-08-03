@@ -694,5 +694,5 @@ def get_connected_files():
         logging.error(f"Error getting connected files: {str(e)}")
         return jsonify({'error': 'Failed to get connected files'}), 500
 
-if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000, debug=True)
+#if __name__ == '__main__':
+#    app.run(host='0.0.0.0', port=5000, debug=True)
