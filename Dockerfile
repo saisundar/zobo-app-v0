@@ -8,8 +8,6 @@ WORKDIR /app
 # We assume requirements.txt is in the root of the repo
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
-
-# Copy all the application files
 # This ensures templates/, static/, app.py, and calendar_service.py are included.
 COPY . .
 
