@@ -23,7 +23,7 @@ WORKDIR /app
 COPY --from=builder /app /app
 
 # Expose the port
-EXPOSE 5000
+EXPOSE $PORT
 
 # Set environment variables
 # These are the variables from replit.md
@@ -32,4 +32,4 @@ ENV FLASK_APP=app.py
 
 # Use Gunicorn to run the application
 # This command is the production-ready entry point.
-CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "2", "app:app"]
+CMD ["gunicorn", "--bind", "0.0.0.0:$PORT", "--workers", "2", "app:app"]
