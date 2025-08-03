@@ -32,4 +32,4 @@ ENV FLASK_APP=app.py
 
 # Use Gunicorn to run the application
 # This command is the production-ready entry point.
-CMD ["gunicorn", "--bind", "0.0.0.0:$PORT", "--workers", "2", "app:app"]
+CMD ["gunicorn", "--bind", "0.0.0.0:$PORT", "app:app"]
