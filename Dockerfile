@@ -19,6 +19,5 @@ EXPOSE $PORT
 ENV SESSION_SECRET=a_secure_default_secret
 ENV FLASK_APP=app.py
 
-# Use Gunicorn to run the application
-# This CMD is correct. The issue was the missing executable, not the command itself.
-CMD ["gunicorn", "--bind", "0.0.0.0:$PORT", "app:app"]
+# Use the shell form of CMD to ensure environment variables are expanded.
+CMD gunicorn --bind 0.0.0.0:$PORT app:app
