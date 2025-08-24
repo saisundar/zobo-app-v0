@@ -12,7 +12,7 @@ from googleapiclient.errors import HttpError
 
 # Scopes for Google Calendar API
 SCOPES = ["https://www.googleapis.com/auth/calendar"]
-CALENDAR_ID = "35b16f711410d3a53db69da560c7b50107d4a4f0397ef90e2f3c251091f54358@group.calendar.google.com"
+CALENDAR_ID = "saisundar.chinmay@gmail.com"
 
 
 class GoogleCalendarService:
@@ -160,7 +160,7 @@ class GoogleCalendarService:
             # Get the existing event
             event = (
                 self.service.events()
-                .get(calendarId="primary", eventId=event_id)
+                .get(calendarId=CALENDAR_ID, eventId=event_id)
                 .execute()
             )
 
@@ -178,7 +178,7 @@ class GoogleCalendarService:
 
             updated_event = (
                 self.service.events()
-                .update(calendarId="primary", eventId=event_id, body=event)
+                .update(calendarId=CALENDAR_ID, eventId=event_id, body=event)
                 .execute()
             )
             return updated_event
@@ -194,7 +194,7 @@ class GoogleCalendarService:
 
         try:
             self.service.events().delete(
-                calendarId="primary", eventId=event_id
+                calendarId=CALENDAR_ID, eventId=event_id
             ).execute()
             return True
 
