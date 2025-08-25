@@ -39,7 +39,11 @@ class GoogleCalendarService:
                     and self.credentials.expired
                     and self.credentials.refresh_token
                 ):
-                    self.credentials.refresh(Request())
+                    try:
+                        self.credentials.refresh(Request())
+                    except Exception as refresh_error:
+                        logging.error(f"Failed to refresh credentials: {str(refresh_error)}")
+                        return False
                 else:
                     # This would need to be handled through OAuth flow
                     logging.warning(

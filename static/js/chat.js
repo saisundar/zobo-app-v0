@@ -5,9 +5,6 @@ class ChatApp {
         this.sendBtn = document.getElementById('sendBtn');
         this.clearBtn = document.getElementById('clearBtn');
         this.statusBtn = document.getElementById('statusBtn');
-        this.oneDriveBtn = document.getElementById('oneDriveBtn');
-        
-
         this.messagesArea = document.getElementById('messagesArea');
         this.chatContainer = document.getElementById('chatContainer');
         this.loadingIndicator = document.getElementById('loadingIndicator');
@@ -73,10 +70,13 @@ class ChatApp {
             this.showAddLinkDialog();
         });
         
-        this.oneDriveBtn.addEventListener('click', (e) => {
-            e.preventDefault();
-            this.openOneDrivePicker();
-        });
+        const oneDriveBtn = document.getElementById('oneDriveBtn');
+        if (oneDriveBtn) {
+            oneDriveBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                this.openOneDrivePicker();
+            });
+        }
         
         this.fileInput.addEventListener('change', (e) => {
             this.handleFileSelection(e.target.files);
@@ -184,8 +184,18 @@ class ChatApp {
     }
     
     formatMessage(content) {
-        // Basic formatting for code blocks and line breaks
-        return content
+        // Escape HTML to prevent XSS
+        const escapeHtml = (text) => {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        };
+        
+        // First escape HTML
+        let formatted = escapeHtml(content);
+        
+        // Then apply formatting for code blocks and line breaks
+        return formatted
             .replace(/\n/g, '<br>')
             .replace(/```([\s\S]*?)```/g, '<pre><code>$1</code></pre>')
             .replace(/`([^`]+)`/g, '<code>$1</code>');
@@ -398,7 +408,7 @@ class ChatApp {
                 this.showStatusAlert('success', `"${file.name}" is now connected to Zobo! You can reference it in conversations.`);
                 
                 // Add a system message to show file connection
-                this.addMessage(`📎 Connected file: ${file.name} (${this.formatFileSize(file.size)}) - Zobo can now access this file`, 'system');
+                this.addMessage(`📎 Connected file: ${file.name} (${this.formatFileSize(file.size)}) - Zobo can now access this file`, 'assistant');
             } else {
                 this.showStatusAlert('error', `Failed to connect "${file.name}": ${data.error}`);
             }
@@ -406,6 +416,14 @@ class ChatApp {
             console.error('File upload error:', error);
             this.showStatusAlert('error', `Failed to connect "${file.name}": Network error`);
         }
+    }
+    
+    formatFileSize(bytes) {
+        if (bytes === 0) return '0 Bytes';
+        const k = 1024;
+        const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
     }
     
     displayAttachedItems() {

@@ -188,6 +188,7 @@ When discussing scheduling, always confirm details with the user before making c
         return jsonify({'error': 'An unexpected error occurred'}), 500
 
 @app.route('/api/clear', methods=['POST'])
+@require_auth
 def clear_conversation():
     """Clear conversation history"""
     try:
@@ -199,6 +200,7 @@ def clear_conversation():
         return jsonify({'error': 'Failed to clear conversation'}), 500
 
 @app.route('/api/conversation', methods=['GET'])
+@require_auth
 def get_conversation():
     """Get current conversation history"""
     try:
@@ -272,6 +274,7 @@ def get_calendar_context():
         return "Calendar information temporarily unavailable"
 
 @app.route('/api/calendar/events', methods=['GET'])
+@require_auth
 def get_calendar_events():
     """Get calendar events"""
     try:
@@ -294,6 +297,7 @@ def get_calendar_events():
         return jsonify({'error': 'Failed to retrieve calendar events'}), 500
 
 @app.route('/api/calendar/schedule', methods=['POST'])
+@require_auth
 def smart_schedule_event():
     """Smart schedule a new event"""
     try:
@@ -343,6 +347,7 @@ def smart_schedule_event():
         return jsonify({'error': 'Failed to schedule event'}), 500
 
 @app.route('/api/calendar/create', methods=['POST'])
+@require_auth
 def create_calendar_event():
     """Create a new calendar event"""
     try:
@@ -379,6 +384,7 @@ def create_calendar_event():
         return jsonify({'error': 'Failed to create calendar event'}), 500
 
 @app.route('/api/calendar/update/<event_id>', methods=['PUT'])
+@require_auth
 def update_calendar_event(event_id):
     """Update an existing calendar event"""
     try:
@@ -407,6 +413,7 @@ def update_calendar_event(event_id):
         return jsonify({'error': 'Failed to update calendar event'}), 500
 
 @app.route('/api/calendar/delete/<event_id>', methods=['DELETE'])
+@require_auth
 def delete_calendar_event(event_id):
     """Delete a calendar event"""
     try:
@@ -422,6 +429,7 @@ def delete_calendar_event(event_id):
         return jsonify({'error': 'Failed to delete calendar event'}), 500
 
 @app.route('/api/calendar/free-slots', methods=['GET'])
+@require_auth
 def get_free_slots():
     """Get available time slots"""
     try:
@@ -634,6 +642,7 @@ def get_user_data_context(user_id):
         return "Remember to learn about this user as they share information about themselves."
 
 @app.route('/api/calendar/confirm-schedule', methods=['POST'])
+@require_auth
 def confirm_schedule():
     """Confirm and create a scheduled event"""
     try:
@@ -675,6 +684,7 @@ def confirm_schedule():
         return jsonify({'error': 'Failed to schedule event'}), 500
 
 @app.route('/api/calendar/manual-event', methods=['POST'])
+@require_auth
 def add_manual_event():
     """Add a manual calendar event from conversation"""
     try:
@@ -709,6 +719,7 @@ def add_manual_event():
         return jsonify({'error': 'Failed to add manual event'}), 500
 
 @app.route('/api/calendar/manual-events', methods=['GET'])
+@require_auth
 def get_manual_events():
     """Get manual calendar events from session"""
     try:
@@ -739,6 +750,7 @@ def get_onedrive_files():
         return jsonify({'error': 'OneDrive integration not yet available'}), 500
 
 @app.route('/api/upload-file', methods=['POST'])
+@require_auth
 def upload_file():
     """Upload and connect a file to Zobo"""
     try:
@@ -793,6 +805,7 @@ def upload_file():
         return jsonify({'error': 'Failed to upload file'}), 500
 
 @app.route('/api/connected-files', methods=['GET'])
+@require_auth
 def get_connected_files():
     """Get list of files connected to Zobo"""
     try:
