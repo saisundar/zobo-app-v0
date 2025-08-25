@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hey Zobo Wake Word Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; }
+        .status { padding: 10px; margin: 10px 0; border-radius: 5px; }
+        .success { background: #d4edda; color: #155724; }
+        .warning { background: #fff3cd; color: #856404; }
+        .error { background: #f8d7da; color: #721c24; }
+        button { padding: 10px 15px; margin: 5px; border: none; border-radius: 5px; cursor: pointer; }
+        .btn-start { background: #28a745; color: white; }
+        .btn-stop { background: #dc3545; color: white; }
+        .btn-disabled { background: #6c757d; color: white; cursor: not-allowed; }
+    </style>
+</head>
+<body>
+    <h1>🎤 Hey Zobo Wake Word Test</h1>
+    
+    <div id="status" class="status warning">
+        Wake word detection not started
+    </div>
+    
+    <button id="startBtn" class="btn-start">Start Wake Word Detection</button>
+    <button id="stopBtn" class="btn-stop" disabled>Stop Wake Word Detection</button>
+    
+    <div style="margin-top: 20px;">
+        <h3>Try saying:</h3>
+        <ul>
+            <li>"Hey Zobo"</li>
+            <li>"Hi Zobo"</li>
+            <li>"Hello Zobo"</li>
+            <li>"Zobo"</li>
+            <li>"Hey Zobo, how are you today?"</li>
+        </ul>
+    </div>
+    
+    <div id="transcript" style="margin-top: 20px; padding: 10px; background: #f8f9fa; border-radius: 5px;">
+        <strong>Transcript will appear here...</strong>
+    </div>
+
+    <script>
+        let recognition = null;
+        let isListening = false;
+        const wakeWords = ['hey zobo', 'hi zobo', 'hello zobo', 'zobo'];
+        
+        const statusDiv = document.getElementById('status');
+        const startBtn = document.getElementById('startBtn');
+        const stopBtn = document.getElementById('stopBtn');
+        const transcriptDiv = document.getElementById('transcript');
+        
+        function updateStatus(message, type = 'warning') {
+            statusDiv.textContent = message;
+            statusDiv.className = `status ${type}`;
+        }
+        
+        function updateTranscript(text) {
+            transcriptDiv.innerHTML = `<strong>Latest:</strong> ${text}`;
+        }
+        
+        function initializeSpeechRecognition() {
+            if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
+                updateStatus('❌ Speech recognition not supported in this browser', 'error');
+                startBtn.disabled = true;
+                startBtn.className = 'btn-disabled';
+                return false;
+            }
+            
+            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+            recognition = new SpeechRecognition();
+            
+            recognition.continuous = true;
+            recognition.interimResults = true;
+            recognition.lang = 'en-US';
+            
+            recognition.onstart = () => {
+                updateStatus('🟢 Listening for wake words...', 'success');
+                isListening = true;
+                startBtn.disabled = true;
+                stopBtn.disabled = false;
+                startBtn.className = 'btn-disabled';
+                stopBtn.className = 'btn-stop';
+            };
+            
+            recognition.onend = () => {
+                updateStatus('⚪ Wake word detection stopped', 'warning');
+                isListening = false;
+                startBtn.disabled = false;
+                stopBtn.disabled = true;
+                startBtn.className = 'btn-start';
+                stopBtn.className = 'btn-disabled';
+                
+                // Auto-restart if not manually stopped
+                if (recognition.autoRestart) {
+                    setTimeout(() => {
+                        if (recognition.autoRestart) {
+                            recognition.start();
+                        }
+                    }, 1000);
+                }
+            };
+            
+            recognition.onerror = (event) => {
+                updateStatus(`❌ Error: ${event.error}`, 'error');
+                console.error('Speech recognition error:', event.error);
+            };
+            
+            recognition.onresult = (event) => {
+                let interimTranscript = '';
+                let finalTranscript = '';
+                
+                for (let i = event.resultIndex; i < event.results.length; i++) {
+                    const transcript = event.results[i][0].transcript.toLowerCase().trim();
+                    if (event.results[i].isFinal) {
+                        finalTranscript += transcript;
+                    } else {
+                        interimTranscript += transcript;
+                    }
+                }
+                
+                const allTranscript = (finalTranscript + ' ' + interimTranscript).toLowerCase();
+                updateTranscript(allTranscript || '(listening...)');
+                
+                // Check for wake words
+                for (const wakeWord of wakeWords) {
+                    if (allTranscript.includes(wakeWord)) {
+                        updateStatus(`🎉 WAKE WORD DETECTED: "${wakeWord}"`, 'success');
+                        
+                        // Extract command after wake word
+                        const wakeWordIndex = allTranscript.indexOf(wakeWord);
+                        const commandText = allTranscript.substring(wakeWordIndex + wakeWord.length).trim();
+                        
+                        if (commandText.length > 0) {
+                            updateTranscript(`Wake word: "${wakeWord}" | Command: "${commandText}"`);
+                        } else {
+                            updateTranscript(`Wake word detected: "${wakeWord}" (no command)`);
+                        }
+                        
+                        // Play success sound
+                        playSuccessSound();
+                        
+                        // Brief visual feedback
+                        document.body.style.background = '#d4edda';
+                        setTimeout(() => {
+                            document.body.style.background = '';
+                        }, 1000);
+                        
+                        break;
+                    }
+                }
+            };
+            
+            return true;
+        }
+        
+        function playSuccessSound() {
+            try {
+                const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                const oscillator = audioContext.createOscillator();
+                const gainNode = audioContext.createGain();
+                
+                oscillator.connect(gainNode);
+                gainNode.connect(audioContext.destination);
+                
+                oscillator.frequency.value = 800;
+                oscillator.type = 'sine';
+                
+                gainNode.gain.setValueAtTime(0.1, audioContext.currentTime);
+                gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.3);
+                
+                oscillator.start(audioContext.currentTime);
+                oscillator.stop(audioContext.currentTime + 0.3);
+            } catch (error) {
+                console.log('Could not play sound:', error);
+            }
+        }
+        
+        startBtn.addEventListener('click', () => {
+            if (recognition) {
+                recognition.autoRestart = true;
+                recognition.start();
+            }
+        });
+        
+        stopBtn.addEventListener('click', () => {
+            if (recognition) {
+                recognition.autoRestart = false;
+                recognition.stop();
+            }
+        });
+        
+        // Initialize on page load
+        if (initializeSpeechRecognition()) {
+            updateStatus('✅ Ready to test wake words. Click "Start" button.', 'success');
+        }
+    </script>
+</body>
+</html>

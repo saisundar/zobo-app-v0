@@ -259,3 +259,36 @@ html, body {
 .compact-mode .message-text {
     padding: 0.5rem 0.75rem !important;
 }
+
+/* Wake word pulse animation */
+@keyframes pulse {
+    0% {
+        transform: scale(1);
+        box-shadow: 0 0 0 0 rgba(23, 162, 184, 0.7);
+    }
+    50% {
+        transform: scale(1.05);
+        box-shadow: 0 0 0 5px rgba(23, 162, 184, 0.3);
+    }
+    100% {
+        transform: scale(1);
+        box-shadow: 0 0 0 10px rgba(23, 162, 184, 0);
+    }
+}
+
+/* Wake word listening indicator */
+.wake-word-listening {
+    position: relative;
+}
+
+.wake-word-listening::after {
+    content: '';
+    position: absolute;
+    top: -2px;
+    left: -2px;
+    right: -2px;
+    bottom: -2px;
+    border: 2px solid #28a745;
+    border-radius: 50%;
+    animation: pulse 2s infinite;
+}

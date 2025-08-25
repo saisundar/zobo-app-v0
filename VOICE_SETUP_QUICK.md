@@ -5,6 +5,7 @@ Voice functionality has been successfully added to Zobo! 🎤
 ## What's Been Added:
 
 ### ✅ **Voice UI Controls:**
+- **Wake Word Button**: Toggle "Hey Zobo" listening (ear icon in header)
 - **Voice Status Button**: Shows if voice API is ready (microphone icon in header)
 - **Voice Record Button**: Record voice messages (microphone icon near input)
 - **Voice Speak Button**: Hear Zobo's responses spoken aloud (speaker icon near input)
@@ -19,7 +20,8 @@ Voice functionality has been successfully added to Zobo! 🎤
 - **Speech-to-Text**: Record voice messages that get converted to text
 - **Text-to-Speech**: Click speaker button to hear Zobo's responses
 - **Live Voice Chat**: Full voice conversations with Zobo
-- **"Hey Zobo" Support**: Voice activation (when API configured)
+- **"Hey Zobo" Wake Word**: Always listening for voice activation
+- **Continuous Listening**: Background wake word detection
 
 ## To Enable Voice Features:
 
@@ -52,13 +54,26 @@ python test_voice_simple.py
 ## How to Use:
 
 1. **Start the app**: `python app.py`
-2. **Check voice status**: Click the microphone button in header
-3. **Record voice message**: Click microphone button near input, speak, click again to stop
-4. **Hear responses**: Click speaker button to hear Zobo's last response
-5. **Voice conversations**: Record messages and Zobo will respond with voice
+2. **Enable "Hey Zobo"**: Click the ear button in header (turns green when listening)
+3. **Say wake word**: Say "Hey Zobo" + your message (e.g., "Hey Zobo, how are you?")
+4. **Alternative**: Click microphone button near input to record manually
+5. **Hear responses**: Click speaker button to hear Zobo's last response
+6. **Voice conversations**: Zobo will respond with voice when wake word is used
+
+### 🎙️ **Wake Word Usage:**
+- **"Hey Zobo, what's the weather?"** - Direct command
+- **"Hi Zobo"** - Just wake word (starts recording mode)
+- **"Hello Zobo, tell me a joke"** - Command with question
+- **"Zobo"** - Simple activation
 
 ## Voice Status Indicators:
 
+### Wake Word Button (Ear Icon):
+- 🟢 **Green Ear**: "Hey Zobo" listening actively
+- 🟡 **Yellow Ear**: "Hey Zobo" starting up
+- ⚪ **Gray Deaf Ear**: "Hey Zobo" disabled
+
+### Voice API Button (Microphone Icon):
 - 🟢 **Green Microphone**: Voice API ready and working
 - 🟡 **Yellow Microphone**: Voice API not configured
 - 🔴 **Red Microphone**: Voice API error

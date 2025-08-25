@@ -5,6 +5,7 @@ class ChatApp {
         this.sendBtn = document.getElementById('sendBtn');
         this.clearBtn = document.getElementById('clearBtn');
         this.statusBtn = document.getElementById('statusBtn');
+        this.wakeWordBtn = document.getElementById('wakeWordBtn');
         this.voiceStatusBtn = document.getElementById('voiceStatusBtn');
         this.voiceRecordBtn = document.getElementById('voiceRecordBtn');
         this.voiceSpeakBtn = document.getElementById('voiceSpeakBtn');
@@ -32,10 +33,17 @@ class ChatApp {
         this.lastAssistantMessage = '';
         this.voiceApiStatus = null;
         
+        // Wake word detection properties
+        this.isListeningForWakeWord = false;
+        this.wakeWordRecognition = null;
+        this.wakeWords = ['hey zobo', 'hi zobo', 'hello zobo', 'zobo'];
+        this.wakeWordEnabled = true;
+        
         this.initializeEventListeners();
         this.loadConversationHistory();
         this.checkApiStatus();
         this.checkVoiceStatus();
+        this.initializeWakeWord();
         this.loadUserInfo();
         this.initializeSettings();
     }
@@ -95,6 +103,10 @@ class ChatApp {
         });
         
         // Voice control handlers
+        this.wakeWordBtn.addEventListener('click', () => {
+            this.toggleWakeWord();
+        });
+        
         this.voiceStatusBtn.addEventListener('click', () => {
             this.checkVoiceStatus();
         });
@@ -1283,6 +1295,200 @@ ChatApp.prototype.loadUserProfile = async function() {
             profileStatus.textContent = 'Error loading profile data';
             profileStatus.className = 'small text-danger';
         }
+    }
+};
+
+// Wake Word Detection Methods
+ChatApp.prototype.initializeWakeWord = function() {
+    // Check if browser supports speech recognition
+    if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
+        console.warn('Speech recognition not supported');
+        this.wakeWordBtn.disabled = true;
+        this.wakeWordBtn.title = 'Speech recognition not supported';
+        return;
+    }
+    
+    // Initialize speech recognition for wake word
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    this.wakeWordRecognition = new SpeechRecognition();
+    
+    this.wakeWordRecognition.continuous = true;
+    this.wakeWordRecognition.interimResults = true;
+    this.wakeWordRecognition.lang = 'en-US';
+    
+    this.wakeWordRecognition.onstart = () => {
+        console.log('Wake word detection started');
+        this.isListeningForWakeWord = true;
+        this.updateWakeWordButton();
+    };
+    
+    this.wakeWordRecognition.onend = () => {
+        console.log('Wake word detection ended');
+        this.isListeningForWakeWord = false;
+        this.updateWakeWordButton();
+        
+        // Restart if wake word is still enabled
+        if (this.wakeWordEnabled) {
+            setTimeout(() => {
+                this.startWakeWordDetection();
+            }, 1000);
+        }
+    };
+    
+    this.wakeWordRecognition.onerror = (event) => {
+        console.error('Wake word recognition error:', event.error);
+        if (event.error === 'not-allowed') {
+            this.showStatusAlert('error', 'Microphone permission denied. Please allow microphone access for wake word detection.');
+            this.wakeWordEnabled = false;
+            this.updateWakeWordButton();
+        }
+    };
+    
+    this.wakeWordRecognition.onresult = (event) => {
+        let interimTranscript = '';
+        let finalTranscript = '';
+        
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+            const transcript = event.results[i][0].transcript.toLowerCase().trim();
+            if (event.results[i].isFinal) {
+                finalTranscript += transcript;
+            } else {
+                interimTranscript += transcript;
+            }
+        }
+        
+        // Check for wake words in both interim and final results
+        const allTranscript = (finalTranscript + ' ' + interimTranscript).toLowerCase();
+        
+        for (const wakeWord of this.wakeWords) {
+            if (allTranscript.includes(wakeWord)) {
+                console.log('Wake word detected:', wakeWord);
+                this.onWakeWordDetected(allTranscript, wakeWord);
+                break;
+            }
+        }
+    };
+    
+    // Start wake word detection by default
+    if (this.wakeWordEnabled) {
+        this.startWakeWordDetection();
+    }
+};
+
+ChatApp.prototype.toggleWakeWord = function() {
+    this.wakeWordEnabled = !this.wakeWordEnabled;
+    
+    if (this.wakeWordEnabled) {
+        this.startWakeWordDetection();
+        this.showStatusAlert('success', 'Hey Zobo wake word detection enabled');
+    } else {
+        this.stopWakeWordDetection();
+        this.showStatusAlert('info', 'Hey Zobo wake word detection disabled');
+    }
+    
+    this.updateWakeWordButton();
+};
+
+ChatApp.prototype.startWakeWordDetection = function() {
+    if (!this.wakeWordRecognition || this.isListeningForWakeWord) {
+        return;
+    }
+    
+    try {
+        this.wakeWordRecognition.start();
+    } catch (error) {
+        console.error('Error starting wake word detection:', error);
+    }
+};
+
+ChatApp.prototype.stopWakeWordDetection = function() {
+    if (this.wakeWordRecognition && this.isListeningForWakeWord) {
+        try {
+            this.wakeWordRecognition.stop();
+        } catch (error) {
+            console.error('Error stopping wake word detection:', error);
+        }
+    }
+};
+
+ChatApp.prototype.updateWakeWordButton = function() {
+    if (!this.wakeWordBtn) return;
+    
+    if (this.wakeWordEnabled && this.isListeningForWakeWord) {
+        this.wakeWordBtn.className = 'btn btn-success btn-sm';
+        this.wakeWordBtn.title = 'Hey Zobo listening (click to disable)';
+        this.wakeWordBtn.innerHTML = '<i class="fas fa-ear-listen"></i>';
+    } else if (this.wakeWordEnabled) {
+        this.wakeWordBtn.className = 'btn btn-warning btn-sm';
+        this.wakeWordBtn.title = 'Hey Zobo starting up (click to disable)';
+        this.wakeWordBtn.innerHTML = '<i class="fas fa-ear-listen"></i>';
+    } else {
+        this.wakeWordBtn.className = 'btn btn-outline-secondary btn-sm';
+        this.wakeWordBtn.title = 'Hey Zobo disabled (click to enable)';
+        this.wakeWordBtn.innerHTML = '<i class="fas fa-ear-deaf"></i>';
+    }
+};
+
+ChatApp.prototype.onWakeWordDetected = function(fullTranscript, wakeWord) {
+    // Show visual feedback
+    this.showStatusAlert('info', `"${wakeWord}" detected! Listening...`, 2000);
+    
+    // Add wake word visual indicator
+    this.wakeWordBtn.style.animation = 'pulse 1s infinite';
+    setTimeout(() => {
+        this.wakeWordBtn.style.animation = '';
+    }, 3000);
+    
+    // Extract potential command after wake word
+    const wakeWordIndex = fullTranscript.indexOf(wakeWord);
+    const commandText = fullTranscript.substring(wakeWordIndex + wakeWord.length).trim();
+    
+    if (commandText.length > 0) {
+        // If there's a command after the wake word, process it
+        this.messageInput.value = commandText;
+        this.updateCharCount();
+        this.autoResizeTextarea();
+        
+        // Auto-send the message after a short delay
+        setTimeout(() => {
+            this.sendMessage();
+        }, 500);
+        
+        this.showStatusAlert('success', `Processing: "${commandText}"`, 3000);
+    } else {
+        // Just wake word detected, start recording for full command
+        this.showStatusAlert('info', 'Say your message now...', 3000);
+        
+        // Start recording after a brief delay
+        setTimeout(() => {
+            this.toggleVoiceRecording();
+        }, 1000);
+    }
+    
+    // Play a subtle notification sound (optional)
+    this.playWakeWordSound();
+};
+
+ChatApp.prototype.playWakeWordSound = function() {
+    try {
+        // Create a subtle beep sound
+        const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        const oscillator = audioContext.createOscillator();
+        const gainNode = audioContext.createGain();
+        
+        oscillator.connect(gainNode);
+        gainNode.connect(audioContext.destination);
+        
+        oscillator.frequency.value = 800;
+        oscillator.type = 'sine';
+        
+        gainNode.gain.setValueAtTime(0.1, audioContext.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.3);
+        
+        oscillator.start(audioContext.currentTime);
+        oscillator.stop(audioContext.currentTime + 0.3);
+    } catch (error) {
+        console.log('Could not play wake word sound:', error);
     }
 };
 
