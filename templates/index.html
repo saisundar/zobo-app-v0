@@ -50,6 +50,9 @@
                             <button class="btn btn-outline-secondary btn-sm" id="clearBtn" title="Clear conversation">
                                 <i class="fas fa-trash"></i>
                             </button>
+                            <button class="btn btn-outline-secondary btn-sm" id="voiceStatusBtn" title="Voice API status">
+                                <i class="fas fa-microphone"></i>
+                            </button>
                             <button class="btn btn-outline-info btn-sm" id="statusBtn" title="Check API status">
                                 <i class="fas fa-info-circle"></i>
                             </button>
@@ -136,6 +139,12 @@
                                     style="resize: none;"
                                     maxlength="2000"
                                 ></textarea>
+                                <button class="btn btn-outline-secondary" type="button" id="voiceRecordBtn" title="Record voice message">
+                                    <i class="fas fa-microphone" id="voiceRecordIcon"></i>
+                                </button>
+                                <button class="btn btn-outline-secondary" type="button" id="voiceSpeakBtn" title="Speak last message">
+                                    <i class="fas fa-volume-up"></i>
+                                </button>
                                 <button class="btn btn-primary" type="submit" id="sendBtn">
                                     <i class="fas fa-paper-plane"></i>
                                 </button>

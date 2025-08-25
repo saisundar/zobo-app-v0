@@ -5,6 +5,10 @@ class ChatApp {
         this.sendBtn = document.getElementById('sendBtn');
         this.clearBtn = document.getElementById('clearBtn');
         this.statusBtn = document.getElementById('statusBtn');
+        this.voiceStatusBtn = document.getElementById('voiceStatusBtn');
+        this.voiceRecordBtn = document.getElementById('voiceRecordBtn');
+        this.voiceSpeakBtn = document.getElementById('voiceSpeakBtn');
+        this.voiceRecordIcon = document.getElementById('voiceRecordIcon');
         this.messagesArea = document.getElementById('messagesArea');
         this.chatContainer = document.getElementById('chatContainer');
         this.loadingIndicator = document.getElementById('loadingIndicator');
@@ -21,9 +25,17 @@ class ChatApp {
         this.attachedFiles = [];
         this.attachedLinks = [];
         
+        // Voice-related properties
+        this.isRecording = false;
+        this.mediaRecorder = null;
+        this.audioChunks = [];
+        this.lastAssistantMessage = '';
+        this.voiceApiStatus = null;
+        
         this.initializeEventListeners();
         this.loadConversationHistory();
         this.checkApiStatus();
+        this.checkVoiceStatus();
         this.loadUserInfo();
         this.initializeSettings();
     }
@@ -82,6 +94,19 @@ class ChatApp {
             this.handleFileSelection(e.target.files);
         });
         
+        // Voice control handlers
+        this.voiceStatusBtn.addEventListener('click', () => {
+            this.checkVoiceStatus();
+        });
+        
+        this.voiceRecordBtn.addEventListener('click', () => {
+            this.toggleVoiceRecording();
+        });
+        
+        this.voiceSpeakBtn.addEventListener('click', () => {
+            this.speakLastMessage();
+        });
+        
         // Auto-focus on message input
         this.messageInput.focus();
         
@@ -118,6 +143,7 @@ class ChatApp {
             
             if (response.ok) {
                 this.addMessage(data.response, 'assistant');
+                this.lastAssistantMessage = data.response; // Store for voice functionality
                 this.hideStatusAlert();
             } else {
                 console.error('Server error:', response.status, data);
@@ -1257,6 +1283,197 @@ ChatApp.prototype.loadUserProfile = async function() {
             profileStatus.textContent = 'Error loading profile data';
             profileStatus.className = 'small text-danger';
         }
+    }
+};
+
+// Voice functionality methods
+ChatApp.prototype.checkVoiceStatus = async function() {
+    try {
+        const response = await fetch('/api/voice/status');
+        const data = await response.json();
+        this.voiceApiStatus = data;
+        
+        // Update voice status button appearance
+        if (data.configured) {
+            this.voiceStatusBtn.className = 'btn btn-success btn-sm';
+            this.voiceStatusBtn.title = 'Voice API is ready';
+            this.voiceRecordBtn.disabled = false;
+            this.voiceSpeakBtn.disabled = false;
+        } else {
+            this.voiceStatusBtn.className = 'btn btn-warning btn-sm';
+            this.voiceStatusBtn.title = 'Voice API not configured';
+            this.voiceRecordBtn.disabled = true;
+            this.voiceSpeakBtn.disabled = true;
+        }
+        
+        // Show status if clicked
+        if (data.configured) {
+            this.showStatusAlert('success', `Voice API is ready! Model: ${data.model}`);
+        } else {
+            this.showStatusAlert('warning', data.message || 'Voice API not configured');
+        }
+    } catch (error) {
+        console.error('Error checking voice status:', error);
+        this.voiceStatusBtn.className = 'btn btn-danger btn-sm';
+        this.voiceStatusBtn.title = 'Voice API error';
+        this.voiceRecordBtn.disabled = true;
+        this.voiceSpeakBtn.disabled = true;
+        this.showStatusAlert('error', 'Failed to check voice status');
+    }
+};
+
+ChatApp.prototype.toggleVoiceRecording = async function() {
+    if (this.isRecording) {
+        this.stopRecording();
+    } else {
+        await this.startRecording();
+    }
+};
+
+ChatApp.prototype.startRecording = async function() {
+    try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        this.mediaRecorder = new MediaRecorder(stream);
+        this.audioChunks = [];
+        
+        this.mediaRecorder.ondataavailable = (event) => {
+            this.audioChunks.push(event.data);
+        };
+        
+        this.mediaRecorder.onstop = () => {
+            this.processRecording();
+        };
+        
+        this.mediaRecorder.start();
+        this.isRecording = true;
+        
+        // Update UI
+        this.voiceRecordIcon.className = 'fas fa-stop';
+        this.voiceRecordBtn.className = 'btn btn-danger';
+        this.voiceRecordBtn.title = 'Stop recording';
+        
+        this.showStatusAlert('info', 'Recording... Click again to stop');
+    } catch (error) {
+        console.error('Error starting recording:', error);
+        this.showStatusAlert('error', 'Failed to start recording. Please check microphone permissions.');
+    }
+};
+
+ChatApp.prototype.stopRecording = function() {
+    if (this.mediaRecorder && this.isRecording) {
+        this.mediaRecorder.stop();
+        this.isRecording = false;
+        
+        // Stop all audio tracks
+        if (this.mediaRecorder.stream) {
+            this.mediaRecorder.stream.getTracks().forEach(track => track.stop());
+        }
+        
+        // Update UI
+        this.voiceRecordIcon.className = 'fas fa-microphone';
+        this.voiceRecordBtn.className = 'btn btn-outline-secondary';
+        this.voiceRecordBtn.title = 'Record voice message';
+        
+        this.showStatusAlert('info', 'Processing voice message...');
+    }
+};
+
+ChatApp.prototype.processRecording = async function() {
+    try {
+        const audioBlob = new Blob(this.audioChunks, { type: 'audio/wav' });
+        const formData = new FormData();
+        formData.append('audio', audioBlob, 'recording.wav');
+        
+        const response = await fetch('/api/voice/live-conversation', {
+            method: 'POST',
+            body: formData
+        });
+        
+        const data = await response.json();
+        
+        if (response.ok) {
+            if (data.audio) {
+                // Play the audio response
+                this.playAudioResponse(data.audio);
+                this.showStatusAlert('success', 'Voice message processed successfully');
+            } else {
+                this.showStatusAlert('success', data.message || 'Voice processed');
+            }
+        } else {
+            this.showStatusAlert('error', data.message || 'Failed to process voice message');
+            if (data.fallback) {
+                this.showStatusAlert('info', 'Please use text chat instead');
+            }
+        }
+    } catch (error) {
+        console.error('Error processing recording:', error);
+        this.showStatusAlert('error', 'Failed to process voice message');
+    }
+};
+
+ChatApp.prototype.speakLastMessage = async function() {
+    if (!this.lastAssistantMessage) {
+        this.showStatusAlert('warning', 'No message to speak');
+        return;
+    }
+    
+    try {
+        this.voiceSpeakBtn.disabled = true;
+        this.voiceSpeakBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+        
+        const response = await fetch('/api/voice/speak', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                text: this.lastAssistantMessage
+            })
+        });
+        
+        const data = await response.json();
+        
+        if (response.ok && data.audio) {
+            this.playAudioResponse(data.audio);
+            this.showStatusAlert('success', 'Speaking message...');
+        } else {
+            this.showStatusAlert('info', data.message || 'Text-to-speech not available');
+        }
+    } catch (error) {
+        console.error('Error with text-to-speech:', error);
+        this.showStatusAlert('error', 'Failed to speak message');
+    } finally {
+        this.voiceSpeakBtn.disabled = false;
+        this.voiceSpeakBtn.innerHTML = '<i class="fas fa-volume-up"></i>';
+    }
+};
+
+ChatApp.prototype.playAudioResponse = function(audioBase64) {
+    try {
+        const audioData = atob(audioBase64);
+        const audioArray = new Uint8Array(audioData.length);
+        for (let i = 0; i < audioData.length; i++) {
+            audioArray[i] = audioData.charCodeAt(i);
+        }
+        
+        const audioBlob = new Blob([audioArray], { type: 'audio/wav' });
+        const audioUrl = URL.createObjectURL(audioBlob);
+        
+        const audio = new Audio(audioUrl);
+        audio.play().then(() => {
+            // Audio is playing
+        }).catch((error) => {
+            console.error('Error playing audio:', error);
+            this.showStatusAlert('error', 'Failed to play audio response');
+        });
+        
+        // Clean up URL after audio finishes
+        audio.addEventListener('ended', () => {
+            URL.revokeObjectURL(audioUrl);
+        });
+    } catch (error) {
+        console.error('Error creating audio from base64:', error);
+        this.showStatusAlert('error', 'Failed to play audio response');
     }
 };
 

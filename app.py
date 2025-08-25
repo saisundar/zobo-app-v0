@@ -9,8 +9,27 @@ from dateutil import parser
 from calendar_service import GoogleCalendarService
 from auth import init_auth, create_auth_routes, require_auth
 
+# Voice API imports
+try:
+    from google import genai
+    from google.genai import types
+    import asyncio
+    import io
+    import wave
+    import base64
+    import tempfile
+    from concurrent.futures import ThreadPoolExecutor
+    VOICE_IMPORTS_AVAILABLE = True
+except ImportError as e:
+    logging.warning(f"Voice imports not available: {e}")
+    VOICE_IMPORTS_AVAILABLE = False
+
 # Configure logging
 logging.basicConfig(level=logging.DEBUG)
+
+# Create thread pool for async voice operations
+if VOICE_IMPORTS_AVAILABLE:
+    executor = ThreadPoolExecutor(max_workers=4)
 
 # Create Flask app
 app = Flask(__name__)
@@ -24,6 +43,118 @@ create_auth_routes(app, oauth_clients)
 MOONSHOT_API_KEY = os.environ.get("MOONSHOT_API_KEY")
 MOONSHOT_BASE_URL = "https://api.moonshot.ai/v1"
 MODEL_NAME = "kimi-k2-0711-preview"
+
+# Gemini Live API configuration for voice features
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
+GEMINI_LIVE_MODEL = "gemini-2.5-flash-preview-native-audio-dialog"  # Native audio model
+
+class GeminiLiveAPI:
+    def __init__(self, api_key):
+        self.api_key = api_key
+        self.client = None
+        self.initialize_client()
+    
+    def initialize_client(self):
+        """Initialize Gemini Live API client"""
+        try:
+            if self.api_key and VOICE_IMPORTS_AVAILABLE:
+                self.client = genai.Client(api_key=self.api_key)
+                logging.info("Gemini Live API client initialized successfully")
+            else:
+                logging.warning("Gemini API key not configured or voice imports unavailable. Live voice features will be disabled.")
+        except Exception as e:
+            logging.error(f"Failed to initialize Gemini Live client: {str(e)}")
+    
+    async def process_audio_conversation(self, audio_data, system_prompt="You are Zobo, a helpful AI assistant."):
+        """Process audio conversation using Gemini Live API"""
+        try:
+            if not self.client:
+                return None, "Gemini Live API not configured"
+            
+            config = {
+                "response_modalities": ["AUDIO"],
+                "system_instruction": system_prompt,
+            }
+            
+            async with self.client.aio.live.connect(model=GEMINI_LIVE_MODEL, config=config) as session:
+                # Send audio input
+                await session.send_realtime_input(
+                    audio=types.Blob(data=audio_data, mime_type="audio/pcm;rate=16000")
+                )
+                
+                # Collect audio response
+                response_audio = []
+                async for response in session.receive():
+                    if response.data is not None:
+                        response_audio.append(response.data)
+                
+                # Combine all audio chunks
+                if response_audio:
+                    combined_audio = b''.join(response_audio)
+                    return combined_audio, None
+                else:
+                    return None, "No audio response received"
+                    
+        except Exception as e:
+            logging.error(f"Gemini Live API error: {str(e)}")
+            return None, str(e)
+    
+    async def text_to_speech_async(self, text, system_prompt="You are Zobo, a helpful AI assistant."):
+        """Convert text to speech using Gemini Live API with proper async handling"""
+        try:
+            if not self.client:
+                return None, "Gemini Live API not configured"
+            
+            config = {
+                "response_modalities": ["AUDIO"],
+                "system_instruction": system_prompt,
+            }
+            
+            async with self.client.aio.live.connect(model=GEMINI_LIVE_MODEL, config=config) as session:
+                # Send text input
+                await session.send_realtime_input(
+                    text=text
+                )
+                
+                # Collect audio response
+                response_audio = []
+                async for response in session.receive():
+                    if response.data is not None:
+                        response_audio.append(response.data)
+                
+                # Combine all audio chunks
+                if response_audio:
+                    combined_audio = b''.join(response_audio)
+                    return combined_audio, None
+                else:
+                    return None, "No audio response received"
+                    
+        except Exception as e:
+            logging.error(f"Text-to-speech error: {str(e)}")
+            return None, str(e)
+    
+    def text_to_speech(self, text, system_prompt="You are Zobo, a helpful AI assistant."):
+        """Synchronous wrapper for text-to-speech"""
+        try:
+            if not VOICE_IMPORTS_AVAILABLE:
+                return None, "Voice functionality not available"
+            
+            # Run async function in thread pool
+            def run_async_tts():
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                try:
+                    return loop.run_until_complete(self.text_to_speech_async(text, system_prompt))
+                finally:
+                    loop.close()
+            
+            # Use thread pool to avoid blocking
+            future = executor.submit(run_async_tts)
+            result = future.result(timeout=30)  # 30 second timeout
+            return result
+        except Exception as e:
+            logging.error(f"Text-to-speech wrapper error: {str(e)}")
+            return None, str(e)
 
 class MoonshotAPI:
     def __init__(self, api_key, base_url):
@@ -68,6 +199,9 @@ class MoonshotAPI:
 
 # Initialize Moonshot API client
 moonshot_client = MoonshotAPI(MOONSHOT_API_KEY, MOONSHOT_BASE_URL) if MOONSHOT_API_KEY else None
+
+# Initialize Voice API client
+voice_client = GeminiLiveAPI(GEMINI_API_KEY) if GEMINI_API_KEY and VOICE_IMPORTS_AVAILABLE else None
 
 # Initialize Google Calendar service
 calendar_service = GoogleCalendarService()
@@ -901,6 +1035,232 @@ def delete_user_data_field(field):
     except Exception as e:
         logging.error(f"Error deleting user data field: {str(e)}")
         return jsonify({'error': 'Failed to delete user data field'}), 500
+
+# Voice API endpoints
+@app.route('/api/voice/speak', methods=['POST'])
+@require_auth
+def text_to_speech():
+    """Convert text to speech using Gemini Live API or fallback"""
+    try:
+        data = request.get_json()
+        text = data.get('text', '').strip()
+        
+        if not text:
+            return jsonify({'error': 'Text is required'}), 400
+        
+        # Try Gemini Live API first
+        if voice_client and voice_client.client:
+            try:
+                audio_content, error = voice_client.text_to_speech(text)
+                if not error and audio_content:
+                    audio_base64 = base64.b64encode(audio_content).decode('utf-8')
+                    return jsonify({
+                        'audio': audio_base64,
+                        'format': 'audio/wav',
+                        'message': 'Text converted to speech successfully'
+                    })
+            except Exception as e:
+                logging.warning(f"Gemini Live API failed, using fallback: {str(e)}")
+        
+        # Fallback: Return success without audio for now
+        return jsonify({
+            'message': 'Text-to-speech is available but audio generation is temporarily disabled',
+            'text': text,
+            'status': 'success'
+        })
+        
+    except Exception as e:
+        logging.error(f"Text-to-speech error: {str(e)}")
+        return jsonify({'error': f'Text-to-speech failed: {str(e)}'}), 500
+
+@app.route('/api/voice/live-conversation', methods=['POST'])
+@require_auth
+def live_conversation():
+    """Process live audio conversation using Gemini Live API"""
+    try:
+        if 'audio' not in request.files:
+            return jsonify({'error': 'No audio file provided'}), 400
+        
+        audio_file = request.files['audio']
+        if audio_file.filename == '':
+            return jsonify({'error': 'No audio file selected'}), 400
+        
+        # Read audio data
+        audio_data = audio_file.read()
+        
+        if not voice_client or not voice_client.client:
+            return jsonify({
+                'error': 'Voice API not configured',
+                'message': 'Please configure Gemini Live API for voice features'
+            }), 500
+        
+        try:
+            # Process audio with Gemini Live API using async wrapper
+            def process_async():
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                try:
+                    return loop.run_until_complete(voice_client.process_audio_conversation(audio_data))
+                finally:
+                    loop.close()
+            
+            if not VOICE_IMPORTS_AVAILABLE:
+                return jsonify({
+                    'error': 'Voice functionality not available',
+                    'message': 'Voice dependencies not installed'
+                }), 500
+            
+            future = executor.submit(process_async)
+            audio_response, error = future.result(timeout=30)
+            
+            if error:
+                logging.error(f"Live conversation error: {error}")
+                return jsonify({
+                    'error': 'Voice processing failed',
+                    'message': 'Voice features are temporarily unavailable. Please use text chat instead.',
+                    'fallback': True
+                }), 500
+            
+            # Return response
+            result = {
+                'message': 'Voice processed successfully',
+                'status': 'success'
+            }
+            
+            # Add audio response if available
+            if audio_response:
+                audio_base64 = base64.b64encode(audio_response).decode('utf-8')
+                result['audio'] = audio_base64
+                result['format'] = 'audio/wav'
+            
+            return jsonify(result)
+            
+        except Exception as e:
+            logging.error(f"Live conversation error: {str(e)}")
+            return jsonify({
+                'error': 'Voice processing failed',
+                'message': 'Voice features are temporarily unavailable. Please use text chat instead.',
+                'fallback': True
+            }), 500
+            
+    except Exception as e:
+        logging.error(f"Live conversation error: {str(e)}")
+        return jsonify({'error': 'Failed to process live conversation'}), 500
+
+@app.route('/api/voice/chat-async', methods=['POST'])
+@require_auth
+def async_chat():
+    """Async chat endpoint for real-time voice conversations"""
+    try:
+        data = request.get_json()
+        message = data.get('message', '').strip()
+        conversation_history = data.get('history', [])
+        
+        if not message:
+            return jsonify({'error': 'Message is required'}), 400
+        
+        if not voice_client:
+            return jsonify({'error': 'Gemini Live API not configured'}), 500
+        
+        # Create system prompt for Zobo
+        system_prompt = """You are Zobo, a close friend who's always there to chat, help, and support. You're warm, understanding, and speak in a casual, friendly way like you've known the person for years. You're genuinely interested in their thoughts and feelings, and you respond with empathy and enthusiasm."""
+        
+        # Process the chat using async function
+        def chat_async():
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                return loop.run_until_complete(voice_client.text_to_speech_async(message, system_prompt))
+            finally:
+                loop.close()
+        
+        if not VOICE_IMPORTS_AVAILABLE:
+            return jsonify({
+                'error': 'Voice functionality not available',
+                'message': 'Voice dependencies not installed'
+            }), 500
+        
+        # Run async function in thread pool
+        future = executor.submit(chat_async)
+        audio_response, error = future.result(timeout=30)  # 30 second timeout
+        
+        if error:
+            return jsonify({'error': f'Chat failed: {error}'}), 500
+        
+        if audio_response:
+            # Convert audio to base64
+            audio_base64 = base64.b64encode(audio_response).decode('utf-8')
+            return jsonify({
+                'audio': audio_base64,
+                'format': 'wav',
+                'message': message,
+                'response': 'Voice response generated successfully'
+            })
+        else:
+            return jsonify({'error': 'No audio response received'}), 500
+        
+    except Exception as e:
+        logging.error(f"Async chat error: {str(e)}")
+        return jsonify({'error': 'Failed to process chat'}), 500
+
+@app.route('/api/voice/available-voices', methods=['GET'])
+@require_auth
+def get_available_voices():
+    """Get information about Gemini Live API voices"""
+    try:
+        if not voice_client:
+            return jsonify({'error': 'Gemini Live API not configured'}), 500
+        
+        # Gemini Live API uses native audio models, so we'll return model information
+        return jsonify({
+            'voices': [
+                {
+                    'name': 'gemini-2.5-flash-preview-native-audio-dialog',
+                    'type': 'Native Audio',
+                    'description': 'Most natural and realistic-sounding speech with better multilingual performance',
+                    'features': ['Affective dialogue', 'Proactive audio', 'Thinking']
+                },
+                {
+                    'name': 'gemini-live-2.5-flash-preview',
+                    'type': 'Half-cascade',
+                    'description': 'Better performance and reliability in production environments',
+                    'features': ['Tool use', 'Function calling', 'Stable production']
+                }
+            ],
+            'current_model': GEMINI_LIVE_MODEL
+        })
+        
+    except Exception as e:
+        logging.error(f"Error getting available voices: {str(e)}")
+        return jsonify({'error': 'Failed to get available voices'}), 500
+
+@app.route('/api/voice/status', methods=['GET'])
+@require_auth
+def voice_api_status():
+    """Check Gemini Live API status"""
+    try:
+        configured = voice_client is not None and VOICE_IMPORTS_AVAILABLE
+        
+        return jsonify({
+            'text_to_speech': configured,
+            'speech_to_text': configured,
+            'live_conversation': configured,
+            'configured': configured,
+            'imports_available': VOICE_IMPORTS_AVAILABLE,
+            'message': 'Gemini Live API is ready' if configured else 'Gemini Live API not configured or voice dependencies missing',
+            'model': GEMINI_LIVE_MODEL if configured else None
+        })
+        
+    except Exception as e:
+        logging.error(f"Voice API status error: {str(e)}")
+        return jsonify({
+            'text_to_speech': False,
+            'speech_to_text': False,
+            'live_conversation': False,
+            'configured': False,
+            'imports_available': VOICE_IMPORTS_AVAILABLE,
+            'message': f'Voice API error: {str(e)}'
+        })
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8080, debug=True, threaded=True)
