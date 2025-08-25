@@ -1,6 +1,7 @@
 import os
 import logging
 import json
+import re
 from flask import Flask, render_template, request, jsonify, session
 import requests
 from datetime import datetime, timedelta
@@ -95,6 +96,12 @@ def chat():
         if not moonshot_client:
             return jsonify({'error': 'Moonshot API key not configured'}), 500
         
+        # Get user ID for data storage
+        user_id = session.get('user', {}).get('id', 'unknown')
+        
+        # Store/extract user data from their message
+        user_data = extract_and_store_user_data(user_message, user_id)
+        
         # Get conversation history from session
         conversation = session.get('conversation', [])
         
@@ -104,10 +111,13 @@ def chat():
         # Add user message to conversation
         conversation.append({"role": "user", "content": enhanced_message})
         
-        # Prepare messages for API (include system message with calendar context)
+        # Prepare messages for API (include system message with calendar context and user data)
         calendar_context = get_calendar_context()
+        user_context = get_user_data_context(user_id)
         
-        system_prompt = """You are Zobo, a close friend who's always there to chat, help, and support. You're warm, understanding, and speak in a casual, friendly way like you've known the person for years. You're genuinely interested in their thoughts and feelings, and you respond with empathy and enthusiasm.
+        system_prompt = f"""You are Zobo, a close friend who's always there to chat, help, and support. You're warm, understanding, and speak in a casual, friendly way like you've known the person for years. You're genuinely interested in their thoughts and feelings, and you respond with empathy and enthusiasm.
+
+{user_context}
 
 You also have access to the user's Google Calendar and can help with scheduling. You can:
 - View upcoming events and availability
@@ -520,6 +530,109 @@ def enhance_message_with_calendar_context(user_message):
         logging.error(f"Error enhancing message with calendar context: {str(e)}")
         return user_message
 
+def extract_and_store_user_data(message, user_id):
+    """Extract and store user-specific data from their message"""
+    try:
+        # Get or create user data storage
+        if 'user_data_storage' not in session:
+            session['user_data_storage'] = {}
+        
+        user_data = session['user_data_storage'].get(user_id, {})
+        message_lower = message.lower()
+        
+        # Extract name information
+        name_patterns = [
+            r"i am ([a-zA-Z\s]+)",
+            r"my name is ([a-zA-Z\s]+)",
+            r"call me ([a-zA-Z\s]+)",
+            r"i'm ([a-zA-Z\s]+)",
+        ]
+        
+        for pattern in name_patterns:
+            match = re.search(pattern, message_lower)
+            if match:
+                name = match.group(1).strip().title()
+                if len(name) > 0 and len(name) < 50:  # Reasonable name length
+                    user_data['name'] = name
+                    user_data['last_updated'] = datetime.now().isoformat()
+                    break
+        
+        # Extract other personal information patterns
+        if 'school' in message_lower or 'grade' in message_lower:
+            school_patterns = [
+                r"i go to ([a-zA-Z0-9\s]+) school",
+                r"i'm in grade (\d+)",
+                r"i'm in (\d+)th grade",
+                r"i study at ([a-zA-Z0-9\s]+)"
+            ]
+            for pattern in school_patterns:
+                match = re.search(pattern, message_lower)
+                if match:
+                    info = match.group(1).strip()
+                    if 'grade' in pattern:
+                        user_data['grade'] = info
+                    else:
+                        user_data['school'] = info.title()
+                    user_data['last_updated'] = datetime.now().isoformat()
+                    break
+        
+        # Extract age information
+        age_patterns = [
+            r"i am (\d+) years old",
+            r"i'm (\d+) years old",
+            r"i am (\d+)",
+            r"i'm (\d+)"
+        ]
+        for pattern in age_patterns:
+            match = re.search(pattern, message_lower)
+            if match:
+                age = int(match.group(1))
+                if 5 <= age <= 100:  # Reasonable age range
+                    user_data['age'] = age
+                    user_data['last_updated'] = datetime.now().isoformat()
+                break
+        
+        # Store updated user data
+        session['user_data_storage'][user_id] = user_data
+        session.modified = True
+        
+        return user_data
+        
+    except Exception as e:
+        logging.error(f"Error extracting user data: {str(e)}")
+        return {}
+
+def get_user_data_context(user_id):
+    """Get user-specific context for the AI assistant"""
+    try:
+        user_data_storage = session.get('user_data_storage', {})
+        user_data = user_data_storage.get(user_id, {})
+        
+        if not user_data:
+            return "Remember to learn about this user as they share information about themselves."
+        
+        context = "What you know about this user:\n"
+        
+        if 'name' in user_data:
+            context += f"- Their name is {user_data['name']}\n"
+        
+        if 'age' in user_data:
+            context += f"- They are {user_data['age']} years old\n"
+        
+        if 'school' in user_data:
+            context += f"- They go to {user_data['school']}\n"
+        
+        if 'grade' in user_data:
+            context += f"- They are in grade {user_data['grade']}\n"
+        
+        context += "\nUse this information naturally in conversations, and remember to ask follow-up questions to learn more about them."
+        
+        return context
+        
+    except Exception as e:
+        logging.error(f"Error getting user data context: {str(e)}")
+        return "Remember to learn about this user as they share information about themselves."
+
 @app.route('/api/calendar/confirm-schedule', methods=['POST'])
 def confirm_schedule():
     """Confirm and create a scheduled event"""
@@ -700,6 +813,81 @@ def get_connected_files():
     except Exception as e:
         logging.error(f"Error getting connected files: {str(e)}")
         return jsonify({'error': 'Failed to get connected files'}), 500
+
+@app.route('/api/user-data', methods=['GET'])
+@require_auth
+def get_user_data():
+    """Get user-specific data"""
+    try:
+        user_id = session.get('user', {}).get('id', 'unknown')
+        user_data_storage = session.get('user_data_storage', {})
+        user_data = user_data_storage.get(user_id, {})
+        
+        return jsonify({'user_data': user_data})
+        
+    except Exception as e:
+        logging.error(f"Error getting user data: {str(e)}")
+        return jsonify({'error': 'Failed to get user data'}), 500
+
+@app.route('/api/user-data', methods=['POST'])
+@require_auth
+def update_user_data():
+    """Update user-specific data"""
+    try:
+        user_id = session.get('user', {}).get('id', 'unknown')
+        data = request.get_json()
+        
+        # Get or create user data storage
+        if 'user_data_storage' not in session:
+            session['user_data_storage'] = {}
+        
+        user_data = session['user_data_storage'].get(user_id, {})
+        
+        # Update allowed fields
+        allowed_fields = ['name', 'age', 'school', 'grade']
+        updated_fields = []
+        
+        for field in allowed_fields:
+            if field in data:
+                user_data[field] = data[field]
+                updated_fields.append(field)
+        
+        if updated_fields:
+            user_data['last_updated'] = datetime.now().isoformat()
+            session['user_data_storage'][user_id] = user_data
+            session.modified = True
+        
+        return jsonify({
+            'message': f'Updated {", ".join(updated_fields)}' if updated_fields else 'No changes made',
+            'user_data': user_data
+        })
+        
+    except Exception as e:
+        logging.error(f"Error updating user data: {str(e)}")
+        return jsonify({'error': 'Failed to update user data'}), 500
+
+@app.route('/api/user-data/<field>', methods=['DELETE'])
+@require_auth
+def delete_user_data_field(field):
+    """Delete a specific user data field"""
+    try:
+        user_id = session.get('user', {}).get('id', 'unknown')
+        user_data_storage = session.get('user_data_storage', {})
+        user_data = user_data_storage.get(user_id, {})
+        
+        if field in user_data:
+            del user_data[field]
+            user_data['last_updated'] = datetime.now().isoformat()
+            session['user_data_storage'][user_id] = user_data
+            session.modified = True
+            
+            return jsonify({'message': f'Deleted {field} from user data'})
+        else:
+            return jsonify({'message': f'Field {field} not found'}), 404
+        
+    except Exception as e:
+        logging.error(f"Error deleting user data field: {str(e)}")
+        return jsonify({'error': 'Failed to delete user data field'}), 500
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8080, debug=True, threaded=True)

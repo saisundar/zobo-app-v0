@@ -692,8 +692,10 @@ window.ZoboCalendar = {
         }
         return [];
     }
-    
-    async loadUserInfo() {
+};
+
+// Move this back into the ChatApp class
+ChatApp.prototype.loadUserInfo = async function() {
         try {
             const response = await fetch('/api/auth/user');
             const data = await response.json();
@@ -719,9 +721,65 @@ window.ZoboCalendar = {
         } catch (error) {
             console.error('Error loading user info:', error);
         }
+};
+
+// User data management methods
+ChatApp.prototype.getUserData = async function() {
+    try {
+        const response = await fetch('/api/user-data');
+        const data = await response.json();
+        return data.user_data || {};
+    } catch (error) {
+        console.error('Error getting user data:', error);
+        return {};
     }
-    
-    initializeSettings() {
+};
+
+ChatApp.prototype.updateUserData = async function(userData) {
+    try {
+        const response = await fetch('/api/user-data', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(userData)
+        });
+        const data = await response.json();
+        if (response.ok) {
+            this.showStatusAlert('success', data.message);
+            return data.user_data;
+        } else {
+            this.showStatusAlert('error', `Failed to update user data: ${data.error}`);
+            return null;
+        }
+    } catch (error) {
+        console.error('Error updating user data:', error);
+        this.showStatusAlert('error', 'Network error while updating user data');
+        return null;
+    }
+};
+
+ChatApp.prototype.deleteUserDataField = async function(field) {
+    try {
+        const response = await fetch(`/api/user-data/${field}`, {
+            method: 'DELETE'
+        });
+        const data = await response.json();
+        if (response.ok) {
+            this.showStatusAlert('success', data.message);
+            return true;
+        } else {
+            this.showStatusAlert('error', `Failed to delete ${field}: ${data.error}`);
+            return false;
+        }
+    } catch (error) {
+        console.error('Error deleting user data field:', error);
+        this.showStatusAlert('error', `Network error while deleting ${field}`);
+        return false;
+    }
+};
+
+ChatApp.prototype.initializeSettings = function() {
         // Settings modal event listeners
         const settingsModal = document.getElementById('settingsModal');
         const switchAccountBtn = document.getElementById('switchAccountBtn');
@@ -820,9 +878,28 @@ window.ZoboCalendar = {
         
         // Load saved settings
         this.loadSavedSettings();
-    }
-    
-    async loadSettingsData() {
+        
+        // Profile management
+        const saveProfileBtn = document.getElementById('saveProfileBtn');
+        const loadProfileBtn = document.getElementById('loadProfileBtn');
+        
+        if (saveProfileBtn) {
+            saveProfileBtn.addEventListener('click', () => {
+                this.saveUserProfile();
+            });
+        }
+        
+        if (loadProfileBtn) {
+            loadProfileBtn.addEventListener('click', () => {
+                this.loadUserProfile();
+            });
+        }
+        
+        // Load profile when settings modal opens
+        this.loadUserProfile();
+};
+
+ChatApp.prototype.loadSettingsData = async function() {
         try {
             // Load user info into settings modal
             const response = await fetch('/api/auth/user');
@@ -850,9 +927,9 @@ window.ZoboCalendar = {
         } catch (error) {
             console.error('Error loading settings data:', error);
         }
-    }
-    
-    async updateAppStatuses() {
+};
+
+ChatApp.prototype.updateAppStatuses = async function() {
         // Check Google Calendar status
         try {
             const response = await fetch('/api/calendar/events?days=1');
@@ -876,21 +953,21 @@ window.ZoboCalendar = {
         
         // Microsoft and Apple status would be checked similarly
         // For now, they remain "Not Connected" as placeholders
-    }
-    
-    switchAccount() {
+};
+
+ChatApp.prototype.switchAccount = function() {
         if (confirm('Do you want to sign out and switch to a different account?')) {
             window.location.href = '/logout';
         }
-    }
-    
-    signOut() {
+};
+
+ChatApp.prototype.signOut = function() {
         if (confirm('Are you sure you want to sign out?')) {
             window.location.href = '/logout';
         }
-    }
-    
-    changeTheme(theme) {
+};
+
+ChatApp.prototype.changeTheme = function(theme) {
         const html = document.documentElement;
         
         switch (theme) {
@@ -924,9 +1001,9 @@ window.ZoboCalendar = {
         
         // Save preference
         localStorage.setItem('zobo-theme', theme);
-    }
-    
-    changeFontSize(size) {
+};
+
+ChatApp.prototype.changeFontSize = function(size) {
         const body = document.body;
         
         // Remove existing font size classes
@@ -937,9 +1014,9 @@ window.ZoboCalendar = {
         
         // Save preference
         localStorage.setItem('zobo-font-size', size);
-    }
-    
-    toggleCompactMode(enabled) {
+};
+
+ChatApp.prototype.toggleCompactMode = function(enabled) {
         const body = document.body;
         
         if (enabled) {
@@ -950,9 +1027,9 @@ window.ZoboCalendar = {
         
         // Save preference
         localStorage.setItem('zobo-compact-mode', enabled.toString());
-    }
-    
-    loadSavedSettings() {
+};
+
+ChatApp.prototype.loadSavedSettings = function() {
         // Load saved theme
         const savedTheme = localStorage.getItem('zobo-theme') || 'dark';
         const themeSelect = document.getElementById('themeSelect');
@@ -976,9 +1053,9 @@ window.ZoboCalendar = {
             compactModeToggle.checked = savedCompactMode;
             this.toggleCompactMode(savedCompactMode);
         }
-    }
-    
-    saveSettings() {
+};
+
+ChatApp.prototype.saveSettings = function() {
         // Settings are saved automatically as they change
         this.showStatusAlert('success', 'Settings saved successfully!');
         
@@ -987,9 +1064,9 @@ window.ZoboCalendar = {
         if (settingsModal) {
             settingsModal.hide();
         }
-    }
-    
-    connectApp(provider) {
+};
+
+ChatApp.prototype.connectApp = function(provider) {
         switch (provider) {
             case 'microsoft':
                 if (confirm('This will redirect you to Microsoft to connect your account. Continue?')) {
@@ -1005,9 +1082,9 @@ window.ZoboCalendar = {
                 this.showStatusAlert('info', `${provider} connection coming soon!`);
                 break;
         }
-    }
-    
-    manageApp(provider) {
+};
+
+ChatApp.prototype.manageApp = function(provider) {
         switch (provider) {
             case 'google':
                 this.showStatusAlert('info', 'Google Calendar is connected and working. You can disconnect by signing out and signing back in with a different account.');
@@ -1016,9 +1093,9 @@ window.ZoboCalendar = {
                 this.showStatusAlert('info', `${provider} management coming soon!`);
                 break;
         }
-    }
-    
-    async clearAllData() {
+};
+
+ChatApp.prototype.clearAllData = async function() {
         if (!confirm('This will delete all your conversation history, settings, and connected files. This action cannot be undone. Are you sure?')) {
             return;
         }
@@ -1047,9 +1124,9 @@ window.ZoboCalendar = {
             console.error('Error clearing data:', error);
             this.showStatusAlert('error', 'Error clearing some data. Please try again.');
         }
-    }
-    
-    async exportData() {
+};
+
+ChatApp.prototype.exportData = async function() {
         try {
             // Get conversation history
             const conversationResponse = await fetch('/api/conversation');
@@ -1092,6 +1169,75 @@ window.ZoboCalendar = {
         } catch (error) {
             console.error('Error exporting data:', error);
             this.showStatusAlert('error', 'Error exporting data. Please try again.');
+        }
+};
+
+// User profile management methods
+ChatApp.prototype.saveUserProfile = async function() {
+    try {
+        const profileName = document.getElementById('profileName')?.value.trim();
+        const profileAge = document.getElementById('profileAge')?.value;
+        const profileSchool = document.getElementById('profileSchool')?.value.trim();
+        const profileGrade = document.getElementById('profileGrade')?.value.trim();
+        
+        const profileData = {};
+        if (profileName) profileData.name = profileName;
+        if (profileAge) profileData.age = parseInt(profileAge);
+        if (profileSchool) profileData.school = profileSchool;
+        if (profileGrade) profileData.grade = profileGrade;
+        
+        if (Object.keys(profileData).length === 0) {
+            this.showStatusAlert('warning', 'Please enter at least one profile field to save.');
+            return;
+        }
+        
+        const result = await this.updateUserData(profileData);
+        if (result) {
+            const profileStatus = document.getElementById('profileStatus');
+            if (profileStatus) {
+                const savedFields = Object.keys(profileData);
+                profileStatus.textContent = `Saved: ${savedFields.join(', ')} • Last updated: ${new Date().toLocaleString()}`;
+                profileStatus.className = 'small text-success';
+            }
+        }
+    } catch (error) {
+        console.error('Error saving user profile:', error);
+        this.showStatusAlert('error', 'Failed to save profile');
+    }
+};
+
+ChatApp.prototype.loadUserProfile = async function() {
+    try {
+        const userData = await this.getUserData();
+        
+        // Update form fields
+        const profileName = document.getElementById('profileName');
+        const profileAge = document.getElementById('profileAge');
+        const profileSchool = document.getElementById('profileSchool');
+        const profileGrade = document.getElementById('profileGrade');
+        const profileStatus = document.getElementById('profileStatus');
+        
+        if (profileName) profileName.value = userData.name || '';
+        if (profileAge) profileAge.value = userData.age || '';
+        if (profileSchool) profileSchool.value = userData.school || '';
+        if (profileGrade) profileGrade.value = userData.grade || '';
+        
+        if (profileStatus) {
+            if (Object.keys(userData).length > 0) {
+                const lastUpdated = userData.last_updated ? new Date(userData.last_updated).toLocaleString() : 'Unknown';
+                profileStatus.textContent = `Profile loaded • Last updated: ${lastUpdated}`;
+                profileStatus.className = 'small text-info';
+            } else {
+                profileStatus.textContent = 'No profile data found. Tell Zobo about yourself to get started!';
+                profileStatus.className = 'small text-muted';
+            }
+        }
+    } catch (error) {
+        console.error('Error loading user profile:', error);
+        const profileStatus = document.getElementById('profileStatus');
+        if (profileStatus) {
+            profileStatus.textContent = 'Error loading profile data';
+            profileStatus.className = 'small text-danger';
         }
     }
 };
