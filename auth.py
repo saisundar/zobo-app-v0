@@ -167,9 +167,25 @@ def create_auth_routes(app, oauth_clients):
             id_token = token.get('id_token')
             if id_token:
                 # Decode the JWT token to get user info
-                import jwt
-                # Note: In production, you should verify the JWT signature
-                user_info = jwt.decode(id_token, options={"verify_signature": False})
+                try:
+                    import jwt
+                    # Note: In production, you should verify the JWT signature
+                    user_info = jwt.decode(id_token, options={"verify_signature": False})
+                except ImportError:
+                    # Fallback if PyJWT is not installed
+                    import base64
+                    import json
+                    # Basic JWT parsing without signature verification (unsafe for production)
+                    try:
+                        payload_part = id_token.split('.')[1]
+                        # Add padding if needed
+                        payload_part += '=' * (4 - len(payload_part) % 4)
+                        payload_bytes = base64.b64decode(payload_part)
+                        user_info = json.loads(payload_bytes)
+                    except Exception as e:
+                        logging.error(f"Failed to decode Apple ID token: {str(e)}")
+                        flash('Apple login failed. Please try again.', 'error')
+                        return redirect(url_for('login'))
                 
                 # Apple also sends user info in the form data on first authorization
                 user_data = request.form.get('user')

@@ -12,7 +12,7 @@ from googleapiclient.errors import HttpError
 
 # Scopes for Google Calendar API
 SCOPES = ["https://www.googleapis.com/auth/calendar"]
-CALENDAR_ID = "saisundar.chinmay@gmail.com"
+CALENDAR_ID = os.environ.get("GOOGLE_CALENDAR_ID", "primary")
 
 
 class GoogleCalendarService:
