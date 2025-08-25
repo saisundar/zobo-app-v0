@@ -203,3 +203,59 @@ html, body {
     border-bottom-right-radius: 0;
     border-right: none;
 }
+
+/* Font Size Options */
+.font-small {
+    font-size: 0.875rem;
+}
+
+.font-small .message-text {
+    font-size: 0.875rem;
+}
+
+.font-medium {
+    font-size: 1rem;
+}
+
+.font-large {
+    font-size: 1.125rem;
+}
+
+.font-large .message-text {
+    font-size: 1.125rem;
+}
+
+.font-extra-large {
+    font-size: 1.25rem;
+}
+
+.font-extra-large .message-text {
+    font-size: 1.25rem;
+}
+
+/* Compact Mode */
+.compact-mode .message-bubble {
+    margin-bottom: 1rem !important;
+}
+
+.compact-mode .message-content {
+    padding: 0.5rem !important;
+}
+
+.compact-mode .avatar {
+    width: 32px !important;
+    height: 32px !important;
+    font-size: 0.875rem;
+}
+
+.compact-mode .modal-body {
+    padding: 1rem;
+}
+
+.compact-mode .card {
+    margin-bottom: 1rem;
+}
+
+.compact-mode .message-text {
+    padding: 0.5rem 0.75rem !important;
+}

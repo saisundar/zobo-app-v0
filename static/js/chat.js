@@ -27,6 +27,8 @@ class ChatApp {
         this.initializeEventListeners();
         this.loadConversationHistory();
         this.checkApiStatus();
+        this.loadUserInfo();
+        this.initializeSettings();
     }
     
     initializeEventListeners() {
@@ -689,6 +691,408 @@ window.ZoboCalendar = {
             return await app.getCalendarEvents(days);
         }
         return [];
+    }
+    
+    async loadUserInfo() {
+        try {
+            const response = await fetch('/api/auth/user');
+            const data = await response.json();
+            
+            if (data.authenticated && data.user) {
+                const userDropdown = document.getElementById('userDropdown');
+                const userName = document.getElementById('userName');
+                const userEmail = document.getElementById('userEmail');
+                const userAvatar = document.getElementById('userAvatar');
+                
+                if (userDropdown && userName && userEmail) {
+                    userName.textContent = data.user.name || 'User';
+                    userEmail.textContent = data.user.email || '';
+                    
+                    if (data.user.picture && userAvatar) {
+                        userAvatar.src = data.user.picture;
+                        userAvatar.style.display = 'inline';
+                    }
+                    
+                    userDropdown.style.display = 'block';
+                }
+            }
+        } catch (error) {
+            console.error('Error loading user info:', error);
+        }
+    }
+    
+    initializeSettings() {
+        // Settings modal event listeners
+        const settingsModal = document.getElementById('settingsModal');
+        const switchAccountBtn = document.getElementById('switchAccountBtn');
+        const signOutBtn = document.getElementById('signOutBtn');
+        const themeSelect = document.getElementById('themeSelect');
+        const fontSizeSelect = document.getElementById('fontSizeSelect');
+        const compactModeToggle = document.getElementById('compactModeToggle');
+        const saveSettingsBtn = document.getElementById('saveSettingsBtn');
+        
+        // Load settings when modal opens
+        if (settingsModal) {
+            settingsModal.addEventListener('show.bs.modal', () => {
+                this.loadSettingsData();
+            });
+        }
+        
+        // Account management
+        if (switchAccountBtn) {
+            switchAccountBtn.addEventListener('click', () => {
+                this.switchAccount();
+            });
+        }
+        
+        if (signOutBtn) {
+            signOutBtn.addEventListener('click', () => {
+                this.signOut();
+            });
+        }
+        
+        // Theme changes
+        if (themeSelect) {
+            themeSelect.addEventListener('change', (e) => {
+                this.changeTheme(e.target.value);
+            });
+        }
+        
+        // Font size changes
+        if (fontSizeSelect) {
+            fontSizeSelect.addEventListener('change', (e) => {
+                this.changeFontSize(e.target.value);
+            });
+        }
+        
+        // Compact mode toggle
+        if (compactModeToggle) {
+            compactModeToggle.addEventListener('change', (e) => {
+                this.toggleCompactMode(e.target.checked);
+            });
+        }
+        
+        // Save settings
+        if (saveSettingsBtn) {
+            saveSettingsBtn.addEventListener('click', () => {
+                this.saveSettings();
+            });
+        }
+        
+        // Connect app buttons
+        const connectMicrosoft = document.getElementById('connectMicrosoft');
+        const connectApple = document.getElementById('connectApple');
+        const manageGoogleCalendar = document.getElementById('manageGoogleCalendar');
+        
+        if (connectMicrosoft) {
+            connectMicrosoft.addEventListener('click', () => {
+                this.connectApp('microsoft');
+            });
+        }
+        
+        if (connectApple) {
+            connectApple.addEventListener('click', () => {
+                this.connectApp('apple');
+            });
+        }
+        
+        if (manageGoogleCalendar) {
+            manageGoogleCalendar.addEventListener('click', () => {
+                this.manageApp('google');
+            });
+        }
+        
+        // Data management
+        const clearAllDataBtn = document.getElementById('clearAllDataBtn');
+        const exportDataBtn = document.getElementById('exportDataBtn');
+        
+        if (clearAllDataBtn) {
+            clearAllDataBtn.addEventListener('click', () => {
+                this.clearAllData();
+            });
+        }
+        
+        if (exportDataBtn) {
+            exportDataBtn.addEventListener('click', () => {
+                this.exportData();
+            });
+        }
+        
+        // Load saved settings
+        this.loadSavedSettings();
+    }
+    
+    async loadSettingsData() {
+        try {
+            // Load user info into settings modal
+            const response = await fetch('/api/auth/user');
+            const data = await response.json();
+            
+            if (data.authenticated && data.user) {
+                const settingsUserName = document.getElementById('settingsUserName');
+                const settingsUserEmail = document.getElementById('settingsUserEmail');
+                const settingsUserProvider = document.getElementById('settingsUserProvider');
+                const settingsUserAvatar = document.getElementById('settingsUserAvatar');
+                
+                if (settingsUserName) settingsUserName.textContent = data.user.name || 'User';
+                if (settingsUserEmail) settingsUserEmail.textContent = data.user.email || '';
+                if (settingsUserProvider) settingsUserProvider.textContent = data.user.provider || 'Unknown';
+                
+                if (data.user.picture && settingsUserAvatar) {
+                    settingsUserAvatar.src = data.user.picture;
+                    settingsUserAvatar.style.display = 'inline';
+                }
+            }
+            
+            // Check app connection statuses
+            this.updateAppStatuses();
+            
+        } catch (error) {
+            console.error('Error loading settings data:', error);
+        }
+    }
+    
+    async updateAppStatuses() {
+        // Check Google Calendar status
+        try {
+            const response = await fetch('/api/calendar/events?days=1');
+            const googleCalendarStatus = document.getElementById('googleCalendarStatus');
+            if (googleCalendarStatus) {
+                if (response.ok) {
+                    googleCalendarStatus.textContent = 'Connected';
+                    googleCalendarStatus.className = 'badge bg-success me-2';
+                } else {
+                    googleCalendarStatus.textContent = 'Not Connected';
+                    googleCalendarStatus.className = 'badge bg-secondary me-2';
+                }
+            }
+        } catch (error) {
+            const googleCalendarStatus = document.getElementById('googleCalendarStatus');
+            if (googleCalendarStatus) {
+                googleCalendarStatus.textContent = 'Error';
+                googleCalendarStatus.className = 'badge bg-danger me-2';
+            }
+        }
+        
+        // Microsoft and Apple status would be checked similarly
+        // For now, they remain "Not Connected" as placeholders
+    }
+    
+    switchAccount() {
+        if (confirm('Do you want to sign out and switch to a different account?')) {
+            window.location.href = '/logout';
+        }
+    }
+    
+    signOut() {
+        if (confirm('Are you sure you want to sign out?')) {
+            window.location.href = '/logout';
+        }
+    }
+    
+    changeTheme(theme) {
+        const html = document.documentElement;
+        
+        switch (theme) {
+            case 'light':
+                html.setAttribute('data-bs-theme', 'light');
+                break;
+            case 'auto':
+                // Detect system preference
+                if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+                    html.setAttribute('data-bs-theme', 'dark');
+                } else {
+                    html.setAttribute('data-bs-theme', 'light');
+                }
+                break;
+            case 'blue':
+                html.setAttribute('data-bs-theme', 'dark');
+                html.style.setProperty('--bs-primary', '#0066cc');
+                html.style.setProperty('--bs-info', '#0066cc');
+                break;
+            case 'purple':
+                html.setAttribute('data-bs-theme', 'dark');
+                html.style.setProperty('--bs-primary', '#6f42c1');
+                html.style.setProperty('--bs-info', '#6f42c1');
+                break;
+            default: // dark
+                html.setAttribute('data-bs-theme', 'dark');
+                html.style.removeProperty('--bs-primary');
+                html.style.removeProperty('--bs-info');
+                break;
+        }
+        
+        // Save preference
+        localStorage.setItem('zobo-theme', theme);
+    }
+    
+    changeFontSize(size) {
+        const body = document.body;
+        
+        // Remove existing font size classes
+        body.classList.remove('font-small', 'font-medium', 'font-large', 'font-extra-large');
+        
+        // Add new font size class
+        body.classList.add(`font-${size}`);
+        
+        // Save preference
+        localStorage.setItem('zobo-font-size', size);
+    }
+    
+    toggleCompactMode(enabled) {
+        const body = document.body;
+        
+        if (enabled) {
+            body.classList.add('compact-mode');
+        } else {
+            body.classList.remove('compact-mode');
+        }
+        
+        // Save preference
+        localStorage.setItem('zobo-compact-mode', enabled.toString());
+    }
+    
+    loadSavedSettings() {
+        // Load saved theme
+        const savedTheme = localStorage.getItem('zobo-theme') || 'dark';
+        const themeSelect = document.getElementById('themeSelect');
+        if (themeSelect) {
+            themeSelect.value = savedTheme;
+            this.changeTheme(savedTheme);
+        }
+        
+        // Load saved font size
+        const savedFontSize = localStorage.getItem('zobo-font-size') || 'medium';
+        const fontSizeSelect = document.getElementById('fontSizeSelect');
+        if (fontSizeSelect) {
+            fontSizeSelect.value = savedFontSize;
+            this.changeFontSize(savedFontSize);
+        }
+        
+        // Load saved compact mode
+        const savedCompactMode = localStorage.getItem('zobo-compact-mode') === 'true';
+        const compactModeToggle = document.getElementById('compactModeToggle');
+        if (compactModeToggle) {
+            compactModeToggle.checked = savedCompactMode;
+            this.toggleCompactMode(savedCompactMode);
+        }
+    }
+    
+    saveSettings() {
+        // Settings are saved automatically as they change
+        this.showStatusAlert('success', 'Settings saved successfully!');
+        
+        // Close modal
+        const settingsModal = bootstrap.Modal.getInstance(document.getElementById('settingsModal'));
+        if (settingsModal) {
+            settingsModal.hide();
+        }
+    }
+    
+    connectApp(provider) {
+        switch (provider) {
+            case 'microsoft':
+                if (confirm('This will redirect you to Microsoft to connect your account. Continue?')) {
+                    window.location.href = '/auth/microsoft';
+                }
+                break;
+            case 'apple':
+                if (confirm('This will redirect you to Apple to connect your account. Continue?')) {
+                    window.location.href = '/auth/apple';
+                }
+                break;
+            default:
+                this.showStatusAlert('info', `${provider} connection coming soon!`);
+                break;
+        }
+    }
+    
+    manageApp(provider) {
+        switch (provider) {
+            case 'google':
+                this.showStatusAlert('info', 'Google Calendar is connected and working. You can disconnect by signing out and signing back in with a different account.');
+                break;
+            default:
+                this.showStatusAlert('info', `${provider} management coming soon!`);
+                break;
+        }
+    }
+    
+    async clearAllData() {
+        if (!confirm('This will delete all your conversation history, settings, and connected files. This action cannot be undone. Are you sure?')) {
+            return;
+        }
+        
+        if (!confirm('Are you absolutely sure? This will permanently delete all your data.')) {
+            return;
+        }
+        
+        try {
+            // Clear conversation
+            await fetch('/api/clear', { method: 'POST' });
+            
+            // Clear local storage
+            localStorage.clear();
+            
+            // Clear session storage
+            sessionStorage.clear();
+            
+            // Reload page
+            this.showStatusAlert('success', 'All data cleared successfully. Page will reload.');
+            setTimeout(() => {
+                window.location.reload();
+            }, 2000);
+            
+        } catch (error) {
+            console.error('Error clearing data:', error);
+            this.showStatusAlert('error', 'Error clearing some data. Please try again.');
+        }
+    }
+    
+    async exportData() {
+        try {
+            // Get conversation history
+            const conversationResponse = await fetch('/api/conversation');
+            const conversationData = await conversationResponse.json();
+            
+            // Get user data
+            const userResponse = await fetch('/api/auth/user');
+            const userData = await userResponse.json();
+            
+            // Get connected files
+            const filesResponse = await fetch('/api/connected-files');
+            const filesData = await filesResponse.json();
+            
+            // Compile export data
+            const exportData = {
+                export_date: new Date().toISOString(),
+                user: userData.user,
+                conversation_history: conversationData.conversation || [],
+                connected_files: filesData.connected_files || [],
+                settings: {
+                    theme: localStorage.getItem('zobo-theme'),
+                    font_size: localStorage.getItem('zobo-font-size'),
+                    compact_mode: localStorage.getItem('zobo-compact-mode')
+                }
+            };
+            
+            // Create download
+            const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `zobo-data-export-${new Date().toISOString().split('T')[0]}.json`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            
+            this.showStatusAlert('success', 'Data exported successfully!');
+            
+        } catch (error) {
+            console.error('Error exporting data:', error);
+            this.showStatusAlert('error', 'Error exporting data. Please try again.');
+        }
     }
 };
 

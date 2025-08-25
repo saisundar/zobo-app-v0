@@ -30,7 +30,23 @@
                             <i class="fas fa-robot text-info me-2 fs-4"></i>
                             <h1 class="h4 mb-0">Zobo - Your AI Friend</h1>
                         </div>
-                        <div class="d-flex gap-2">
+                        <div class="d-flex align-items-center gap-2">
+                            <!-- User info -->
+                            <div class="dropdown" id="userDropdown" style="display: none;">
+                                <button class="btn btn-outline-light btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown">
+                                    <img id="userAvatar" src="" alt="" class="rounded-circle me-1" style="width: 20px; height: 20px; display: none;">
+                                    <span id="userName"></span>
+                                </button>
+                                <ul class="dropdown-menu dropdown-menu-end">
+                                    <li><span class="dropdown-item-text small text-muted" id="userEmail"></span></li>
+                                    <li><hr class="dropdown-divider"></li>
+                                    <li><a class="dropdown-item" href="/logout"><i class="fas fa-sign-out-alt me-2"></i>Sign Out</a></li>
+                                </ul>
+                            </div>
+                            
+                            <button class="btn btn-outline-secondary btn-sm" id="settingsBtn" title="Settings" data-bs-toggle="modal" data-bs-target="#settingsModal">
+                                <i class="fas fa-cog"></i>
+                            </button>
                             <button class="btn btn-outline-secondary btn-sm" id="clearBtn" title="Clear conversation">
                                 <i class="fas fa-trash"></i>
                             </button>
@@ -128,6 +144,190 @@
                             </small>
                         </div>
                     </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Settings Modal -->
+    <div class="modal fade" id="settingsModal" tabindex="-1" aria-labelledby="settingsModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content bg-dark">
+                <div class="modal-header border-secondary">
+                    <h5 class="modal-title" id="settingsModalLabel">
+                        <i class="fas fa-cog me-2 text-info"></i>Settings
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="container-fluid">
+                        <!-- Account Management -->
+                        <div class="row mb-4">
+                            <div class="col-12">
+                                <h6 class="text-info mb-3"><i class="fas fa-user me-2"></i>Account Management</h6>
+                                <div class="card bg-secondary border-0">
+                                    <div class="card-body">
+                                        <div class="d-flex align-items-center mb-3">
+                                            <img id="settingsUserAvatar" src="" alt="" class="rounded-circle me-3" style="width: 48px; height: 48px; display: none;">
+                                            <div class="flex-grow-1">
+                                                <h6 class="mb-1" id="settingsUserName">Loading...</h6>
+                                                <small class="text-muted" id="settingsUserEmail">Loading...</small>
+                                            </div>
+                                            <span class="badge bg-info" id="settingsUserProvider">Loading...</span>
+                                        </div>
+                                        <div class="d-grid gap-2 d-md-flex">
+                                            <button class="btn btn-outline-warning btn-sm" id="switchAccountBtn">
+                                                <i class="fas fa-exchange-alt me-2"></i>Switch Account
+                                            </button>
+                                            <button class="btn btn-outline-danger btn-sm" id="signOutBtn">
+                                                <i class="fas fa-sign-out-alt me-2"></i>Sign Out
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Connected Apps -->
+                        <div class="row mb-4">
+                            <div class="col-12">
+                                <h6 class="text-info mb-3"><i class="fas fa-link me-2"></i>Connected Apps & Services</h6>
+                                <div class="card bg-secondary border-0">
+                                    <div class="card-body">
+                                        <!-- Google Calendar -->
+                                        <div class="d-flex align-items-center justify-content-between mb-3 p-2 bg-dark rounded">
+                                            <div class="d-flex align-items-center">
+                                                <i class="fab fa-google text-danger fs-5 me-3"></i>
+                                                <div>
+                                                    <h6 class="mb-1">Google Calendar</h6>
+                                                    <small class="text-muted">Manage your calendar events</small>
+                                                </div>
+                                            </div>
+                                            <div>
+                                                <span class="badge bg-success me-2" id="googleCalendarStatus">Connected</span>
+                                                <button class="btn btn-outline-secondary btn-sm" id="manageGoogleCalendar">
+                                                    <i class="fas fa-cog"></i>
+                                                </button>
+                                            </div>
+                                        </div>
+
+                                        <!-- Microsoft 365 -->
+                                        <div class="d-flex align-items-center justify-content-between mb-3 p-2 bg-dark rounded">
+                                            <div class="d-flex align-items-center">
+                                                <i class="fab fa-microsoft text-primary fs-5 me-3"></i>
+                                                <div>
+                                                    <h6 class="mb-1">Microsoft 365</h6>
+                                                    <small class="text-muted">Access Outlook, OneDrive & more</small>
+                                                </div>
+                                            </div>
+                                            <div>
+                                                <span class="badge bg-secondary me-2" id="microsoftStatus">Not Connected</span>
+                                                <button class="btn btn-outline-primary btn-sm" id="connectMicrosoft">
+                                                    <i class="fas fa-plus"></i> Connect
+                                                </button>
+                                            </div>
+                                        </div>
+
+                                        <!-- Apple iCloud -->
+                                        <div class="d-flex align-items-center justify-content-between mb-3 p-2 bg-dark rounded">
+                                            <div class="d-flex align-items-center">
+                                                <i class="fab fa-apple text-white fs-5 me-3"></i>
+                                                <div>
+                                                    <h6 class="mb-1">Apple iCloud</h6>
+                                                    <small class="text-muted">Connect your Apple services</small>
+                                                </div>
+                                            </div>
+                                            <div>
+                                                <span class="badge bg-secondary me-2" id="appleStatus">Not Connected</span>
+                                                <button class="btn btn-outline-light btn-sm" id="connectApple">
+                                                    <i class="fas fa-plus"></i> Connect
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Appearance -->
+                        <div class="row mb-4">
+                            <div class="col-12">
+                                <h6 class="text-info mb-3"><i class="fas fa-palette me-2"></i>Appearance</h6>
+                                <div class="card bg-secondary border-0">
+                                    <div class="card-body">
+                                        <div class="row">
+                                            <div class="col-md-6 mb-3">
+                                                <label for="themeSelect" class="form-label">Color Theme</label>
+                                                <select class="form-select bg-dark border-secondary text-white" id="themeSelect">
+                                                    <option value="dark">Dark Theme (Default)</option>
+                                                    <option value="light">Light Theme</option>
+                                                    <option value="auto">Auto (System)</option>
+                                                    <option value="blue">Blue Theme</option>
+                                                    <option value="purple">Purple Theme</option>
+                                                </select>
+                                            </div>
+                                            <div class="col-md-6 mb-3">
+                                                <label for="fontSizeSelect" class="form-label">Font Size</label>
+                                                <select class="form-select bg-dark border-secondary text-white" id="fontSizeSelect">
+                                                    <option value="small">Small</option>
+                                                    <option value="medium" selected>Medium</option>
+                                                    <option value="large">Large</option>
+                                                    <option value="extra-large">Extra Large</option>
+                                                </select>
+                                            </div>
+                                        </div>
+                                        <div class="row">
+                                            <div class="col-12">
+                                                <div class="form-check form-switch">
+                                                    <input class="form-check-input" type="checkbox" id="compactModeToggle">
+                                                    <label class="form-check-label" for="compactModeToggle">
+                                                        Compact Mode
+                                                    </label>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Privacy & Data -->
+                        <div class="row mb-4">
+                            <div class="col-12">
+                                <h6 class="text-info mb-3"><i class="fas fa-shield-alt me-2"></i>Privacy & Data</h6>
+                                <div class="card bg-secondary border-0">
+                                    <div class="card-body">
+                                        <div class="form-check form-switch mb-3">
+                                            <input class="form-check-input" type="checkbox" id="saveConversationsToggle" checked>
+                                            <label class="form-check-label" for="saveConversationsToggle">
+                                                Save conversation history
+                                            </label>
+                                        </div>
+                                        <div class="form-check form-switch mb-3">
+                                            <input class="form-check-input" type="checkbox" id="shareDataToggle">
+                                            <label class="form-check-label" for="shareDataToggle">
+                                                Share usage data to improve Zobo
+                                            </label>
+                                        </div>
+                                        <div class="d-grid gap-2 d-md-flex mt-3">
+                                            <button class="btn btn-outline-warning btn-sm" id="clearAllDataBtn">
+                                                <i class="fas fa-trash me-2"></i>Clear All Data
+                                            </button>
+                                            <button class="btn btn-outline-info btn-sm" id="exportDataBtn">
+                                                <i class="fas fa-download me-2"></i>Export My Data
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer border-secondary">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    <button type="button" class="btn btn-primary" id="saveSettingsBtn">
+                        <i class="fas fa-save me-2"></i>Save Changes
+                    </button>
                 </div>
             </div>
         </div>

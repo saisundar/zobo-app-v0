@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sign In - Zobo</title>
+    
+    <!-- Bootstrap CSS (Replit dark theme) -->
+    <link href="https://cdn.replit.com/agent/bootstrap-agent-dark-theme.min.css" rel="stylesheet">
+    
+    <!-- Font Awesome for icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/custom.css') }}">
+    
+    <style>
+        .login-container {
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+        
+        .login-card {
+            background: rgba(0, 0, 0, 0.8);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 15px;
+            padding: 2rem;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+            max-width: 400px;
+            width: 100%;
+            margin: 1rem;
+        }
+        
+        .oauth-btn {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 100%;
+            padding: 0.75rem 1rem;
+            margin-bottom: 1rem;
+            border: none;
+            border-radius: 8px;
+            font-size: 1rem;
+            font-weight: 500;
+            text-decoration: none;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .oauth-btn:before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.1), transparent);
+            transition: left 0.5s;
+        }
+        
+        .oauth-btn:hover:before {
+            left: 100%;
+        }
+        
+        .oauth-btn i {
+            margin-right: 0.75rem;
+            font-size: 1.2rem;
+        }
+        
+        .btn-google {
+            background: #ea4335;
+            color: white;
+        }
+        
+        .btn-google:hover {
+            background: #d33b2c;
+            color: white;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(234, 67, 53, 0.3);
+        }
+        
+        .btn-microsoft {
+            background: #0078d4;
+            color: white;
+        }
+        
+        .btn-microsoft:hover {
+            background: #106ebe;
+            color: white;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0, 120, 212, 0.3);
+        }
+        
+        .btn-apple {
+            background: #000000;
+            color: white;
+            border: 1px solid #333;
+        }
+        
+        .btn-apple:hover {
+            background: #1a1a1a;
+            color: white;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+        }
+        
+        .oauth-btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            background: #666 !important;
+        }
+        
+        .oauth-btn:disabled:hover {
+            transform: none;
+            box-shadow: none;
+        }
+        
+        .logo-section {
+            text-align: center;
+            margin-bottom: 2rem;
+        }
+        
+        .logo-section i {
+            font-size: 3rem;
+            color: #17a2b8;
+            margin-bottom: 1rem;
+        }
+        
+        .divider {
+            text-align: center;
+            margin: 1.5rem 0;
+            position: relative;
+        }
+        
+        .divider::before {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 0;
+            right: 0;
+            height: 1px;
+            background: rgba(255, 255, 255, 0.2);
+        }
+        
+        .divider span {
+            background: rgba(0, 0, 0, 0.8);
+            padding: 0 1rem;
+            color: rgba(255, 255, 255, 0.7);
+            font-size: 0.9rem;
+        }
+        
+        .feature-list {
+            margin-top: 1.5rem;
+            padding-top: 1.5rem;
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .feature-list li {
+            margin-bottom: 0.5rem;
+            color: rgba(255, 255, 255, 0.8);
+            font-size: 0.9rem;
+        }
+        
+        .feature-list i {
+            color: #17a2b8;
+            margin-right: 0.5rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="login-container">
+        <div class="login-card">
+            <div class="logo-section">
+                <i class="fas fa-robot"></i>
+                <h2 class="text-white mb-0">Welcome to Zobo</h2>
+                <p class="text-muted">Your AI Friend & Assistant</p>
+            </div>
+            
+            <!-- Flash messages -->
+            {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                    {% for category, message in messages %}
+                        <div class="alert alert-{{ 'danger' if category == 'error' else category }} alert-dismissible fade show" role="alert">
+                            {{ message }}
+                            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                        </div>
+                    {% endfor %}
+                {% endif %}
+            {% endwith %}
+            
+            <div class="text-center mb-3">
+                <h5 class="text-white">Sign in to continue</h5>
+                <p class="text-muted small">Choose your preferred sign-in method</p>
+            </div>
+            
+            <!-- OAuth Login Buttons -->
+            <div id="oauth-buttons">
+                <!-- Buttons will be populated by JavaScript -->
+            </div>
+            
+            <div class="feature-list">
+                <p class="text-muted small mb-2">With Zobo, you can:</p>
+                <ul class="list-unstyled small">
+                    <li><i class="fas fa-comments"></i> Chat with your AI friend</li>
+                    <li><i class="fas fa-calendar"></i> Manage your calendar</li>
+                    <li><i class="fas fa-file"></i> Work with your files</li>
+                    <li><i class="fas fa-clock"></i> Schedule events smartly</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    
+    <script>
+        // Load available OAuth providers and create buttons
+        async function loadOAuthProviders() {
+            try {
+                const response = await fetch('/api/auth/status');
+                const data = await response.json();
+                
+                const buttonsContainer = document.getElementById('oauth-buttons');
+                
+                if (data.available_providers && data.available_providers.length > 0) {
+                    data.available_providers.forEach(provider => {
+                        const button = document.createElement('a');
+                        button.href = provider.login_url;
+                        button.className = `oauth-btn btn-${provider.name}`;
+                        button.innerHTML = `
+                            <i class="${provider.icon}"></i>
+                            Sign in with ${provider.display_name}
+                        `;
+                        buttonsContainer.appendChild(button);
+                    });
+                } else {
+                    buttonsContainer.innerHTML = `
+                        <div class="alert alert-warning" role="alert">
+                            <i class="fas fa-exclamation-triangle me-2"></i>
+                            No OAuth providers are configured. Please configure at least one provider:
+                            <ul class="mt-2 mb-0">
+                                <li>Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET for Google login</li>
+                                <li>Set MICROSOFT_CLIENT_ID and MICROSOFT_CLIENT_SECRET for Microsoft login</li>
+                                <li>Set APPLE_CLIENT_ID and APPLE_CLIENT_SECRET for Apple login</li>
+                            </ul>
+                        </div>
+                    `;
+                }
+            } catch (error) {
+                console.error('Failed to load OAuth providers:', error);
+                document.getElementById('oauth-buttons').innerHTML = `
+                    <div class="alert alert-danger" role="alert">
+                        <i class="fas fa-exclamation-circle me-2"></i>
+                        Failed to load sign-in options. Please try refreshing the page.
+                    </div>
+                `;
+            }
+        }
+        
+        // Load providers when page loads
+        document.addEventListener('DOMContentLoaded', loadOAuthProviders);
+    </script>
+</body>
+</html>

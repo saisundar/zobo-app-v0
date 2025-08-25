@@ -6,6 +6,7 @@ import requests
 from datetime import datetime, timedelta
 from dateutil import parser
 from calendar_service import GoogleCalendarService
+from auth import init_auth, create_auth_routes, require_auth
 
 # Configure logging
 logging.basicConfig(level=logging.DEBUG)
@@ -13,6 +14,10 @@ logging.basicConfig(level=logging.DEBUG)
 # Create Flask app
 app = Flask(__name__)
 app.secret_key = os.environ.get("SESSION_SECRET", "dev-secret-key-change-in-production")
+
+# Initialize OAuth
+oauth_clients = init_auth(app)
+create_auth_routes(app, oauth_clients)
 
 # Moonshot API configuration
 MOONSHOT_API_KEY = os.environ.get("MOONSHOT_API_KEY")
@@ -67,6 +72,7 @@ moonshot_client = MoonshotAPI(MOONSHOT_API_KEY, MOONSHOT_BASE_URL) if MOONSHOT_A
 calendar_service = GoogleCalendarService()
 
 @app.route('/')
+@require_auth
 def index():
     """Main chat interface"""
     # Initialize session conversation if not exists
@@ -76,6 +82,7 @@ def index():
     return render_template('index.html')
 
 @app.route('/api/chat', methods=['POST'])
+@require_auth
 def chat():
     """Handle chat messages"""
     try:
@@ -694,5 +701,5 @@ def get_connected_files():
         logging.error(f"Error getting connected files: {str(e)}")
         return jsonify({'error': 'Failed to get connected files'}), 500
 
-#if __name__ == '__main__':
-#    app.run(host='0.0.0.0', port=5000, debug=True)
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=8080, debug=True, threaded=True)
