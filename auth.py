@@ -74,21 +74,43 @@ def create_auth_routes(app, oauth_clients):
     @app.route('/auth/google')
     def google_login():
         """Initiate Google OAuth login"""
-        if not os.environ.get("GOOGLE_CLIENT_ID"):
-            flash('Google OAuth not configured', 'error')
+        try:
+            if not os.environ.get("GOOGLE_CLIENT_ID"):
+                logging.error("Google OAuth attempted but GOOGLE_CLIENT_ID not configured")
+                flash('Google OAuth not configured. Please check environment variables.', 'error')
+                return redirect(url_for('login'))
+            
+            if not os.environ.get("GOOGLE_CLIENT_SECRET"):
+                logging.error("Google OAuth attempted but GOOGLE_CLIENT_SECRET not configured")
+                flash('Google OAuth not configured. Please check environment variables.', 'error')
+                return redirect(url_for('login'))
+            
+            redirect_uri = url_for('google_callback', _external=True)
+            logging.info(f"Initiating Google OAuth with redirect URI: {redirect_uri}")
+            return google.authorize_redirect(redirect_uri)
+        except Exception as e:
+            logging.error(f"Error initiating Google OAuth: {str(e)}")
+            flash('Failed to initiate Google login. Please try again.', 'error')
             return redirect(url_for('login'))
-        
-        redirect_uri = url_for('google_callback', _external=True)
-        return google.authorize_redirect(redirect_uri)
     
     @app.route('/auth/google/callback')
     def google_callback():
         """Handle Google OAuth callback"""
         try:
+            logging.info("Google OAuth callback received")
             token = google.authorize_access_token()
+            logging.info(f"Token received: {bool(token)}")
+            
+            if not token:
+                logging.error("No token received from Google OAuth")
+                flash('Failed to authenticate with Google. Please try again.', 'error')
+                return redirect(url_for('login'))
+            
             user_info = token.get('userinfo')
+            logging.info(f"User info received: {bool(user_info)}")
             
             if user_info:
+                logging.info(f"Google OAuth successful for user: {user_info.get('email', 'unknown')}")
                 session['user'] = {
                     'id': user_info['sub'],
                     'email': user_info['email'],
@@ -99,10 +121,13 @@ def create_auth_routes(app, oauth_clients):
                 flash(f'Welcome, {user_info["name"]}!', 'success')
                 return redirect(url_for('index'))
             else:
+                logging.error("No user info in Google OAuth token")
                 flash('Failed to get user information from Google', 'error')
                 
         except Exception as e:
-            logging.error(f"Google OAuth error: {str(e)}")
+            logging.error(f"Google OAuth callback error: {str(e)}")
+            import traceback
+            logging.error(f"Full traceback: {traceback.format_exc()}")
             flash('Google login failed. Please try again.', 'error')
         
         return redirect(url_for('login'))
@@ -270,6 +295,26 @@ def create_auth_routes(app, oauth_clients):
             'user': session.get('user'),
             'available_providers': providers
         })
+    
+    @app.route('/api/auth/debug')
+    def auth_debug():
+        """Debug OAuth configuration"""
+        debug_info = {
+            'google_configured': bool(os.environ.get("GOOGLE_CLIENT_ID") and os.environ.get("GOOGLE_CLIENT_SECRET")),
+            'google_client_id_present': bool(os.environ.get("GOOGLE_CLIENT_ID")),
+            'google_client_secret_present': bool(os.environ.get("GOOGLE_CLIENT_SECRET")),
+            'microsoft_configured': bool(os.environ.get("MICROSOFT_CLIENT_ID") and os.environ.get("MICROSOFT_CLIENT_SECRET")),
+            'apple_configured': bool(os.environ.get("APPLE_CLIENT_ID") and os.environ.get("APPLE_CLIENT_SECRET")),
+            'demo_enabled': bool(os.environ.get("ENABLE_DEMO_AUTH")),
+            'session_secret_configured': bool(app.secret_key != "dev-secret-key-change-in-production")
+        }
+        
+        # Only show partial client ID for security
+        if os.environ.get("GOOGLE_CLIENT_ID"):
+            client_id = os.environ.get("GOOGLE_CLIENT_ID")
+            debug_info['google_client_id_preview'] = client_id[:12] + "..." + client_id[-4:] if len(client_id) > 16 else "too_short"
+        
+        return jsonify(debug_info)
     
     # Demo authentication route
     @app.route('/auth/demo')
