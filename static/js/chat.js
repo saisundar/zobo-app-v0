@@ -757,6 +757,9 @@ ChatApp.prototype.loadUserInfo = async function() {
             const data = await response.json();
             
             if (data.authenticated && data.user) {
+                // Store user data for guest detection
+                this.currentUser = data.user;
+                
                 const userDropdown = document.getElementById('userDropdown');
                 const userName = document.getElementById('userName');
                 const userEmail = document.getElementById('userEmail');
@@ -772,6 +775,11 @@ ChatApp.prototype.loadUserInfo = async function() {
                     }
                     
                     userDropdown.style.display = 'block';
+                }
+                
+                // Show guest warning if user is a guest
+                if (this.isGuestUser()) {
+                    this.showGuestWarning();
                 }
             }
         } catch (error) {
@@ -968,12 +976,19 @@ ChatApp.prototype.loadSettingsData = async function() {
                 const settingsUserAvatar = document.getElementById('settingsUserAvatar');
                 
                 if (settingsUserName) settingsUserName.textContent = data.user.name || 'User';
-                if (settingsUserEmail) settingsUserEmail.textContent = data.user.email || '';
+                if (settingsUserEmail) {
+                    settingsUserEmail.textContent = data.user.email || (data.user.provider === 'guest' ? 'Guest User - No Email' : '');
+                }
                 if (settingsUserProvider) settingsUserProvider.textContent = data.user.provider || 'Unknown';
                 
                 if (data.user.picture && settingsUserAvatar) {
                     settingsUserAvatar.src = data.user.picture;
                     settingsUserAvatar.style.display = 'inline';
+                }
+                
+                // Disable connect buttons for guest users
+                if (data.user.provider === 'guest') {
+                    this.disableConnectButtons();
                 }
             }
             
@@ -1123,6 +1138,12 @@ ChatApp.prototype.saveSettings = function() {
 };
 
 ChatApp.prototype.connectApp = function(provider) {
+        // Check if user is a guest
+        if (this.isGuestUser()) {
+            this.showGuestRestrictionWarning();
+            return;
+        }
+        
         switch (provider) {
             case 'microsoft':
                 if (confirm('This will redirect you to Microsoft to connect your account. Continue?')) {
@@ -1141,6 +1162,12 @@ ChatApp.prototype.connectApp = function(provider) {
 };
 
 ChatApp.prototype.manageApp = function(provider) {
+        // Check if user is a guest
+        if (this.isGuestUser()) {
+            this.showGuestRestrictionWarning();
+            return;
+        }
+        
         switch (provider) {
             case 'google':
                 this.showStatusAlert('info', 'Google Calendar is connected and working. You can disconnect by signing out and signing back in with a different account.');
@@ -1680,6 +1707,67 @@ ChatApp.prototype.playAudioResponse = function(audioBase64) {
     } catch (error) {
         console.error('Error creating audio from base64:', error);
         this.showStatusAlert('error', 'Failed to play audio response');
+    }
+};
+
+// Guest user helper functions
+ChatApp.prototype.isGuestUser = function() {
+    return this.currentUser && this.currentUser.provider === 'guest';
+};
+
+ChatApp.prototype.showGuestWarning = function() {
+    // Show persistent warning for guest users
+    this.showStatusAlert('warning', 'You\'re using Zobo as a guest. App linking and calendar features require signing in with Google. <a href="/login" class="text-white">Sign in now</a>');
+};
+
+ChatApp.prototype.showGuestRestrictionWarning = function() {
+    // Show warning when guest tries to connect apps
+    alert('App linking is not available for guest users. Please sign in with your Google account to connect apps and access calendar features.\n\nClick "Sign in with Google" from the account menu to get started.');
+};
+
+ChatApp.prototype.disableConnectButtons = function() {
+    // Disable and update connect buttons for guest users
+    const connectMicrosoft = document.getElementById('connectMicrosoft');
+    const connectApple = document.getElementById('connectApple');
+    const manageGoogleCalendar = document.getElementById('manageGoogleCalendar');
+    const microsoftStatus = document.getElementById('microsoftStatus');
+    const appleStatus = document.getElementById('appleStatus');
+    const googleCalendarStatus = document.getElementById('googleCalendarStatus');
+    
+    if (connectMicrosoft) {
+        connectMicrosoft.disabled = true;
+        connectMicrosoft.classList.add('disabled');
+        connectMicrosoft.innerHTML = '<i class="fas fa-lock"></i> Requires Sign In';
+        connectMicrosoft.title = 'Sign in with Google to connect Microsoft 365';
+    }
+    
+    if (connectApple) {
+        connectApple.disabled = true;
+        connectApple.classList.add('disabled');
+        connectApple.innerHTML = '<i class="fas fa-lock"></i> Requires Sign In';
+        connectApple.title = 'Sign in with Google to connect Apple iCloud';
+    }
+    
+    if (manageGoogleCalendar) {
+        manageGoogleCalendar.disabled = true;
+        manageGoogleCalendar.classList.add('disabled');
+        manageGoogleCalendar.innerHTML = '<i class="fas fa-lock"></i>';
+        manageGoogleCalendar.title = 'Sign in with Google to access calendar features';
+    }
+    
+    if (microsoftStatus) {
+        microsoftStatus.textContent = 'Requires Sign In';
+        microsoftStatus.className = 'badge bg-secondary me-2';
+    }
+    
+    if (appleStatus) {
+        appleStatus.textContent = 'Requires Sign In';
+        appleStatus.className = 'badge bg-secondary me-2';
+    }
+    
+    if (googleCalendarStatus) {
+        googleCalendarStatus.textContent = 'Requires Sign In';
+        googleCalendarStatus.className = 'badge bg-secondary me-2';
     }
 };
 

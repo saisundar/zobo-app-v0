@@ -127,11 +127,11 @@ class GoogleCalendarService:
                 "description": description,
                 "location": location,
                 "start": {
-                    "dateTime": start_time,
+                    "dateTime": start_time if start_time.endswith('Z') else start_time + 'Z',
                     "timeZone": "UTC",
                 },
                 "end": {
-                    "dateTime": end_time,
+                    "dateTime": end_time if end_time.endswith('Z') else end_time + 'Z',
                     "timeZone": "UTC",
                 },
             }
@@ -176,9 +176,9 @@ class GoogleCalendarService:
             if location is not None:
                 event["location"] = location
             if start_time:
-                event["start"] = {"dateTime": start_time, "timeZone": "UTC"}
+                event["start"] = {"dateTime": start_time if start_time.endswith('Z') else start_time + 'Z', "timeZone": "UTC"}
             if end_time:
-                event["end"] = {"dateTime": end_time, "timeZone": "UTC"}
+                event["end"] = {"dateTime": end_time if end_time.endswith('Z') else end_time + 'Z', "timeZone": "UTC"}
 
             updated_event = (
                 self.service.events()

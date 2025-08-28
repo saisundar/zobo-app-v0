@@ -7,7 +7,7 @@ import requests
 from datetime import datetime, timedelta
 from dateutil import parser
 from calendar_service import GoogleCalendarService
-from auth import init_auth, create_auth_routes, require_auth
+from auth import init_auth, create_auth_routes, require_auth, require_google_auth
 
 # Voice API imports
 try:
@@ -33,7 +33,12 @@ if VOICE_IMPORTS_AVAILABLE:
 
 # Create Flask app
 app = Flask(__name__)
-app.secret_key = os.environ.get("SESSION_SECRET", "dev-secret-key-change-in-production")
+session_secret = os.environ.get("SESSION_SECRET")
+if not session_secret:
+    logging.warning("SESSION_SECRET not set! Using random secret key. Sessions will not persist across restarts.")
+    import secrets
+    session_secret = secrets.token_hex(32)
+app.secret_key = session_secret
 
 # Initialize OAuth
 oauth_clients = init_auth(app)
@@ -150,8 +155,12 @@ class GeminiLiveAPI:
             
             # Use thread pool to avoid blocking
             future = executor.submit(run_async_tts)
-            result = future.result(timeout=30)  # 30 second timeout
-            return result
+            try:
+                result = future.result(timeout=30)  # 30 second timeout
+                return result
+            except TimeoutError:
+                logging.error("Text-to-speech operation timed out")
+                return None, "Operation timed out"
         except Exception as e:
             logging.error(f"Text-to-speech wrapper error: {str(e)}")
             return None, str(e)
@@ -294,8 +303,8 @@ When discussing scheduling, always confirm details with the user before making c
             {"role": "system", "content": system_prompt}
         ]
         
-        # Add conversation history (limit to last 10 messages to stay within token limits and avoid cookie size issues)
-        messages.extend(conversation[-10:])
+        # Add conversation history (limit to last 8 messages to stay within token limits and avoid cookie size issues)
+        messages.extend(conversation[-8:])
         
         # Call Moonshot API
         response = moonshot_client.chat_completion(messages, temperature=0.6)
@@ -306,8 +315,8 @@ When discussing scheduling, always confirm details with the user before making c
             # Add assistant response to conversation
             conversation.append({"role": "assistant", "content": assistant_message})
             
-            # Update session (keep only last 10 messages to prevent cookie overflow)
-            session['conversation'] = conversation[-10:]
+            # Update session (keep only last 8 messages to prevent cookie overflow)
+            session['conversation'] = conversation[-8:]
             session.modified = True
             
             return jsonify({
@@ -408,7 +417,7 @@ def get_calendar_context():
         return "Calendar information temporarily unavailable"
 
 @app.route('/api/calendar/events', methods=['GET'])
-@require_auth
+@require_google_auth
 def get_calendar_events():
     """Get calendar events"""
     try:
@@ -431,7 +440,7 @@ def get_calendar_events():
         return jsonify({'error': 'Failed to retrieve calendar events'}), 500
 
 @app.route('/api/calendar/schedule', methods=['POST'])
-@require_auth
+@require_google_auth
 def smart_schedule_event():
     """Smart schedule a new event"""
     try:
@@ -481,7 +490,7 @@ def smart_schedule_event():
         return jsonify({'error': 'Failed to schedule event'}), 500
 
 @app.route('/api/calendar/create', methods=['POST'])
-@require_auth
+@require_google_auth
 def create_calendar_event():
     """Create a new calendar event"""
     try:
@@ -518,7 +527,7 @@ def create_calendar_event():
         return jsonify({'error': 'Failed to create calendar event'}), 500
 
 @app.route('/api/calendar/update/<event_id>', methods=['PUT'])
-@require_auth
+@require_google_auth
 def update_calendar_event(event_id):
     """Update an existing calendar event"""
     try:
@@ -547,7 +556,7 @@ def update_calendar_event(event_id):
         return jsonify({'error': 'Failed to update calendar event'}), 500
 
 @app.route('/api/calendar/delete/<event_id>', methods=['DELETE'])
-@require_auth
+@require_google_auth
 def delete_calendar_event(event_id):
     """Delete a calendar event"""
     try:
@@ -563,7 +572,7 @@ def delete_calendar_event(event_id):
         return jsonify({'error': 'Failed to delete calendar event'}), 500
 
 @app.route('/api/calendar/free-slots', methods=['GET'])
-@require_auth
+@require_google_auth
 def get_free_slots():
     """Get available time slots"""
     try:
@@ -647,7 +656,7 @@ def enhance_message_with_calendar_context(user_message):
             else:
                 calendar_info += "\n\nManual schedule entries:\n"
             
-            for event in manual_events[-10:]:  # Last 10 manual events
+            for event in manual_events[-5:]:  # Last 5 manual events
                 calendar_info += f"- {event['summary']}: {event['time']}\n"
             
             if not calendar_info.endswith("]"):
@@ -776,7 +785,7 @@ def get_user_data_context(user_id):
         return "Remember to learn about this user as they share information about themselves."
 
 @app.route('/api/calendar/confirm-schedule', methods=['POST'])
-@require_auth
+@require_google_auth
 def confirm_schedule():
     """Confirm and create a scheduled event"""
     try:
@@ -895,13 +904,13 @@ def upload_file():
         if file.filename == '':
             return jsonify({'error': 'No file selected'}), 400
         
-        # Check file size (10MB limit)
+        # Check file size (5MB limit to prevent session bloat)
         file.seek(0, 2)  # SEEK_END
         file_size = file.tell()
         file.seek(0)
         
-        if file_size > 10 * 1024 * 1024:  # 10MB
-            return jsonify({'error': 'File too large. Maximum size is 10MB.'}), 400
+        if file_size > 5 * 1024 * 1024:  # 5MB
+            return jsonify({'error': 'File too large. Maximum size is 5MB.'}), 400
         
         # Read file content
         file_content = file.read()
@@ -917,9 +926,9 @@ def upload_file():
             'uploaded_at': datetime.now().isoformat()
         }
         
-        # Remove old files if too many (keep last 5)
-        if len(connected_files) >= 5:
-            connected_files = connected_files[-4:]  # Keep last 4, add new one
+        # Remove old files if too many (keep last 3 to prevent session bloat)
+        if len(connected_files) >= 3:
+            connected_files = connected_files[-2:]  # Keep last 2, add new one
         
         connected_files.append(file_info)
         session['connected_files'] = connected_files
@@ -1111,7 +1120,14 @@ def live_conversation():
                 }), 500
             
             future = executor.submit(process_async)
-            audio_response, error = future.result(timeout=30)
+            try:
+                audio_response, error = future.result(timeout=30)
+            except TimeoutError:
+                return jsonify({
+                    'error': 'Voice processing timeout',
+                    'message': 'Voice operation took too long. Please try again.',
+                    'fallback': True
+                }), 500
             
             if error:
                 logging.error(f"Live conversation error: {error}")
@@ -1182,7 +1198,10 @@ def async_chat():
         
         # Run async function in thread pool
         future = executor.submit(chat_async)
-        audio_response, error = future.result(timeout=30)  # 30 second timeout
+        try:
+            audio_response, error = future.result(timeout=30)  # 30 second timeout
+        except TimeoutError:
+            return jsonify({'error': 'Chat operation timed out'}), 500
         
         if error:
             return jsonify({'error': f'Chat failed: {error}'}), 500

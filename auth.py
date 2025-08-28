@@ -197,19 +197,23 @@ def create_auth_routes(app, oauth_clients):
                     # Note: In production, you should verify the JWT signature
                     user_info = jwt.decode(id_token, options={"verify_signature": False})
                 except ImportError:
+                    logging.warning("PyJWT not available, using basic JWT parsing")
                     # Fallback if PyJWT is not installed
                     import base64
                     import json
                     # Basic JWT parsing without signature verification (unsafe for production)
                     try:
-                        payload_part = id_token.split('.')[1]
+                        parts = id_token.split('.')
+                        if len(parts) != 3:
+                            raise ValueError("Invalid JWT token format")
+                        payload_part = parts[1]
                         # Add padding if needed
                         payload_part += '=' * (4 - len(payload_part) % 4)
                         payload_bytes = base64.b64decode(payload_part)
                         user_info = json.loads(payload_bytes)
-                    except Exception as e:
+                    except (ValueError, json.JSONDecodeError, base64.binascii.Error) as e:
                         logging.error(f"Failed to decode Apple ID token: {str(e)}")
-                        flash('Apple login failed. Please try again.', 'error')
+                        flash('Apple login failed. Invalid token format.', 'error')
                         return redirect(url_for('login'))
                 
                 # Apple also sends user info in the form data on first authorization
@@ -335,6 +339,27 @@ def create_auth_routes(app, oauth_clients):
         
         flash('Welcome, Demo User! You\'re now signed in.', 'success')
         return redirect(url_for('index'))
+    
+    # Guest authentication route
+    @app.route('/auth/guest')
+    def guest_login():
+        """Guest login for using Zobo without account"""
+        import uuid
+        
+        # Create a guest user session with unique ID
+        guest_id = f"guest-{str(uuid.uuid4())[:8]}"
+        session['user'] = {
+            'id': guest_id,
+            'email': None,
+            'name': 'Guest User',
+            'picture': None,
+            'provider': 'guest',
+            'is_guest': True
+        }
+        
+        # Show warning about app linking restrictions
+        flash('You\'re using Zobo as a guest. Note: App linking and calendar features require signing in with Google.', 'warning')
+        return redirect(url_for('index'))
 
 def require_auth(f):
     """Decorator to require authentication for routes"""
@@ -344,5 +369,26 @@ def require_auth(f):
     def decorated_function(*args, **kwargs):
         if 'user' not in session:
             return redirect(url_for('login'))
+        return f(*args, **kwargs)
+    return decorated_function
+
+def require_google_auth(f):
+    """Decorator to require Google authentication for calendar/app linking features"""
+    from functools import wraps
+    from flask import jsonify
+    
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if 'user' not in session:
+            return redirect(url_for('login'))
+        
+        user = session.get('user', {})
+        if user.get('provider') != 'google':
+            return jsonify({
+                'error': 'Google authentication required',
+                'message': 'This feature requires signing in with Google to access calendar and app linking functionality.',
+                'requires_google': True
+            }), 403
+        
         return f(*args, **kwargs)
     return decorated_function
