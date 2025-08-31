@@ -370,10 +370,18 @@ When discussing scheduling, always confirm details with the user before making c
 @app.route('/api/clear', methods=['POST'])
 @require_auth
 def clear_conversation():
-    """Clear conversation history"""
+    """Clear conversation history but preserve user profile data"""
     try:
+        # Clear only conversation, NOT user profile data
         session['conversation'] = []
         session.modified = True
+        
+        # Clear conversation from database but keep user profile
+        user_id = session.get('user', {}).get('id')
+        if user_id:
+            db.save_conversation(user_id, [])
+            logging.info(f"Conversation cleared for user {user_id}, profile data preserved")
+        
         return jsonify({'message': 'Conversation cleared successfully'})
     except Exception as e:
         logging.error(f"Clear conversation error: {str(e)}")
@@ -735,21 +743,24 @@ def extract_and_store_user_data(message, user_id):
         user_data = session['user_data_storage'].get(user_id, {})
         message_lower = message.lower()
         
-        # Extract name information
+        # Extract name information with improved patterns
         name_patterns = [
-            r"i am ([a-zA-Z\s]+)",
-            r"my name is ([a-zA-Z\s]+)",
-            r"call me ([a-zA-Z\s]+)",
-            r"i'm ([a-zA-Z\s]+)",
+            r"\bmy name is ([a-zA-Z][a-zA-Z\s]{1,48})\b",  # More specific: starts with letter, 1-48 chars
+            r"\bi am ([a-zA-Z][a-zA-Z\s]{1,48})(?:\s+and|\s*,|\.|$)",  # Must end with 'and', comma, period, or end
+            r"\bcall me ([a-zA-Z][a-zA-Z\s]{1,48})\b",
+            r"\bi'm ([a-zA-Z][a-zA-Z\s]{1,48})(?:\s+and|\s*,|\.|$)",  # Must end with 'and', comma, period, or end
         ]
         
         for pattern in name_patterns:
             match = re.search(pattern, message_lower)
             if match:
                 name = match.group(1).strip().title()
-                if len(name) > 0 and len(name) < 50:  # Reasonable name length
+                # Additional validation: name should be reasonable
+                if (len(name) >= 2 and len(name) < 50 and 
+                    name.lower() not in ['hi', 'hello', 'hey', 'good', 'fine', 'ok', 'okay', 'yes', 'no']):
                     user_data['name'] = name
                     user_data['last_updated'] = datetime.now().isoformat()
+                    logging.info(f"Extracted name: '{name}' from message: '{message[:50]}...'")
                     break
         
         # Extract other personal information patterns
@@ -771,12 +782,12 @@ def extract_and_store_user_data(message, user_id):
                     user_data['last_updated'] = datetime.now().isoformat()
                     break
         
-        # Extract age information
+        # Extract age information with better context validation
         age_patterns = [
-            r"i am (\d+) years old",
-            r"i'm (\d+) years old",
-            r"i am (\d+)",
-            r"i'm (\d+)"
+            r"\bi am (\d+) years old\b",
+            r"\bi'm (\d+) years old\b",
+            r"\bi am (\d+)(?:\s+years?\s+old|\s*,|\.|$)",  # Must have context or end
+            r"\bi'm (\d+)(?:\s+years?\s+old|\s*,|\.|$)"   # Must have context or end
         ]
         for pattern in age_patterns:
             match = re.search(pattern, message_lower)
@@ -785,6 +796,7 @@ def extract_and_store_user_data(message, user_id):
                 if 5 <= age <= 100:  # Reasonable age range
                     user_data['age'] = age
                     user_data['last_updated'] = datetime.now().isoformat()
+                    logging.info(f"Extracted age: {age} from message: '{message[:50]}...'")
                 break
         
         # Store updated user data with additional security validation
@@ -793,7 +805,14 @@ def extract_and_store_user_data(message, user_id):
             session.modified = True
             
             # Save to database for persistence
-            db.save_user(user_id, user_data)
+            try:
+                save_success = db.save_user(user_id, user_data)
+                if save_success:
+                    logging.info(f"✅ User data saved to database: {user_data}")
+                else:
+                    logging.error(f"❌ Failed to save user data to database for {user_id}")
+            except Exception as e:
+                logging.error(f"❌ Database save error for {user_id}: {str(e)}")
         else:
             logging.warning(f"Invalid user_id in extract_and_store_user_data: {user_id}")
         
@@ -813,8 +832,27 @@ def get_user_data_context(user_id):
             return "Remember to learn about this user as they share information about themselves."
         
         # Load user data from database first, fallback to session
-        user_data = db.get_user(user_id) or {}
-        if not user_data:
+        try:
+            user_data = db.get_user(user_id) or {}
+            
+            # Clean corrupted data (names like "In" from bad parsing)
+            if user_data.get('name') and len(user_data['name']) < 3:
+                suspicious_names = ['in', 'hi', 'is', 'am', 'me', 'it', 'my', 'i']
+                if user_data['name'].lower() in suspicious_names:
+                    logging.warning(f"Removing corrupted name '{user_data['name']}' for user {user_id}")
+                    user_data['name'] = None
+                    # Update database to remove corrupted data
+                    db.save_user(user_id, user_data)
+            
+            if not user_data:
+                user_data_storage = session.get('user_data_storage', {})
+                user_data = user_data_storage.get(user_id, {})
+                logging.info(f"Using session data for user {user_id}")
+            else:
+                logging.info(f"Using database data for user {user_id}: name={user_data.get('name')}")
+        except Exception as e:
+            logging.error(f"Error loading user data for {user_id}: {str(e)}")
+            # Fallback to session
             user_data_storage = session.get('user_data_storage', {})
             user_data = user_data_storage.get(user_id, {})
         
