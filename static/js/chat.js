@@ -47,6 +47,7 @@ class ChatApp {
         this.loadUserInfo();
         this.initializeSettings();
         this.loadUserPreferences();
+        this.initializeNotifications();
     }
     
     initializeEventListeners() {
@@ -131,6 +132,22 @@ class ChatApp {
         const message = this.messageInput.value.trim();
         
         if (!message || this.isLoading) {
+            return;
+        }
+        
+        // Check for notification/timer commands first
+        const notificationResult = this.handleNotificationCommand(message);
+        if (notificationResult && notificationResult.handled) {
+            // Add user message to chat
+            this.addMessage(message, 'user');
+            
+            // Add response
+            this.addMessage(notificationResult.response, 'assistant');
+            
+            // Clear input
+            this.messageInput.value = '';
+            this.updateCharCount();
+            this.autoResizeTextarea();
             return;
         }
         
@@ -2025,6 +2042,247 @@ ChatApp.prototype.exportData = async function() {
         console.error('Error exporting data:', error);
         this.showStatusAlert('error', 'Error exporting data. Please try again.');
     }
+};
+
+// Notification and timing methods
+ChatApp.prototype.initializeNotifications = function() {
+    /**
+     * Initialize notification system integration
+     */
+    this.notifications = window.zoboNotifications;
+    
+    if (this.notifications) {
+        console.log('Notification system initialized:', this.notifications.getCapabilities());
+    }
+};
+
+ChatApp.prototype.handleNotificationCommand = function(message) {
+    /**
+     * Handle notification, alarm, timer, and stopwatch commands from chat
+     */
+    if (!this.notifications) {
+        return { handled: false, error: 'Notification system not available' };
+    }
+    
+    const msgLower = message.toLowerCase();
+    
+    // NOTIFICATION COMMANDS
+    if (msgLower.includes('send notification') || msgLower.includes('notify me')) {
+        const titleMatch = message.match(/(?:send notification|notify me)(?:\s+about\s+)?['"](.*?)['"]|(?:send notification|notify me)(?:\s+about\s+)?(.*?)(?:\.|$)/i);
+        const title = titleMatch ? (titleMatch[1] || titleMatch[2]).trim() : 'Zobo Notification';
+        
+        this.notifications.sendNotification('Zobo', { body: title });
+        return { handled: true, response: `📢 Notification sent: "${title}"` };
+    }
+    
+    // ALARM COMMANDS  
+    if (msgLower.includes('set alarm') || msgLower.includes('alarm for')) {
+        if (!this.notifications.isFeatureAvailable('alarm')) {
+            return { handled: true, response: '⏰ Alarms are only available on mobile devices (phones and tablets).' };
+        }
+        
+        // Parse time and message
+        const timeMatch = message.match(/(?:at|for)\s+(\d{1,2}):?(\d{2})?\s*(am|pm)?|in\s+(\d+)\s*(minutes?|hours?)/i);
+        const messageMatch = message.match(/(?:alarm|wake me)\s+(?:up\s+)?(?:at|for|in)\s+.*?(?:for|about|to|:)\s+['"](.*?)['"]|(?:alarm|wake me)\s+(?:up\s+)?(?:at|for|in)\s+.*?(?:for|about|to|:\s+)(.*?)(?:\.|$)/i);
+        
+        if (timeMatch) {
+            try {
+                let alarmTime;
+                const alarmMessage = messageMatch ? (messageMatch[1] || messageMatch[2]).trim() : 'Alarm';
+                
+                if (timeMatch[4]) {
+                    // Relative time (in X minutes/hours)
+                    const amount = parseInt(timeMatch[4]);
+                    const unit = timeMatch[5].toLowerCase();
+                    const multiplier = unit.includes('hour') ? 60 : 1;
+                    alarmTime = new Date(Date.now() + (amount * multiplier * 60 * 1000));
+                } else {
+                    // Absolute time (at X:XX)
+                    const hour = parseInt(timeMatch[1]);
+                    const minute = parseInt(timeMatch[2] || 0);
+                    const ampm = timeMatch[3];
+                    
+                    alarmTime = new Date();
+                    alarmTime.setHours(ampm === 'pm' && hour !== 12 ? hour + 12 : (ampm === 'am' && hour === 12 ? 0 : hour));
+                    alarmTime.setMinutes(minute);
+                    alarmTime.setSeconds(0);
+                    
+                    // If time has passed today, set for tomorrow
+                    if (alarmTime <= new Date()) {
+                        alarmTime.setDate(alarmTime.getDate() + 1);
+                    }
+                }
+                
+                const alarmId = `alarm-${Date.now()}`;
+                this.notifications.setAlarm(alarmId, alarmTime, alarmMessage);
+                
+                return { 
+                    handled: true, 
+                    response: `⏰ Alarm set for ${alarmTime.toLocaleString()}: "${alarmMessage}"` 
+                };
+            } catch (error) {
+                return { handled: true, response: `❌ Could not set alarm: ${error.message}` };
+            }
+        } else {
+            return { handled: true, response: '❌ Please specify a time for the alarm (e.g., "set alarm for 7:30 AM" or "set alarm in 30 minutes")' };
+        }
+    }
+    
+    // TIMER COMMANDS
+    if (msgLower.includes('set timer') || msgLower.includes('timer for')) {
+        if (!this.notifications.isFeatureAvailable('timer')) {
+            return { handled: true, response: '⏱️ Timers are only available on mobile devices (phones and tablets).' };
+        }
+        
+        const timeMatch = message.match(/(?:timer|set timer)\s+for\s+(\d+)\s*(minutes?|seconds?|hours?)|(\d+)\s*(minutes?|seconds?|hours?)\s+timer/i);
+        const messageMatch = message.match(/timer.*?(?:for|about|to|:)\s+['"](.*?)['"]|timer.*?(?:for|about|to|:\s+)(.*?)(?:\.|$)/i);
+        
+        if (timeMatch) {
+            try {
+                const amount = parseInt(timeMatch[1] || timeMatch[3]);
+                const unit = (timeMatch[2] || timeMatch[4]).toLowerCase();
+                const timerMessage = messageMatch ? (messageMatch[1] || messageMatch[2]).trim() : 'Timer finished';
+                
+                let seconds;
+                if (unit.includes('hour')) {
+                    seconds = amount * 3600;
+                } else if (unit.includes('minute')) {
+                    seconds = amount * 60;
+                } else {
+                    seconds = amount;
+                }
+                
+                const timerId = `timer-${Date.now()}`;
+                this.notifications.startTimer(timerId, seconds, timerMessage);
+                
+                return { 
+                    handled: true, 
+                    response: `⏱️ Timer started for ${amount} ${unit}: "${timerMessage}"` 
+                };
+            } catch (error) {
+                return { handled: true, response: `❌ Could not start timer: ${error.message}` };
+            }
+        } else {
+            return { handled: true, response: '❌ Please specify a duration for the timer (e.g., "set timer for 10 minutes" or "5 minute timer")' };
+        }
+    }
+    
+    // STOPWATCH COMMANDS
+    if (msgLower.includes('start stopwatch') || msgLower.includes('stopwatch start')) {
+        if (!this.notifications.isFeatureAvailable('stopwatch')) {
+            return { handled: true, response: '⏱️ Stopwatches are only available on mobile devices (phones and tablets).' };
+        }
+        
+        try {
+            const stopwatchId = `stopwatch-${Date.now()}`;
+            this.notifications.startStopwatch(stopwatchId);
+            return { handled: true, response: `⏱️ Stopwatch started (ID: ${stopwatchId})` };
+        } catch (error) {
+            return { handled: true, response: `❌ Could not start stopwatch: ${error.message}` };
+        }
+    }
+    
+    if (msgLower.includes('stop stopwatch') || msgLower.includes('stopwatch stop')) {
+        const stopwatches = this.notifications.getActiveStopwatches();
+        if (stopwatches.length === 0) {
+            return { handled: true, response: '❌ No active stopwatches found' };
+        }
+        
+        const stopwatch = stopwatches[0]; // Stop the first/most recent one
+        const finalTime = this.notifications.stopStopwatch(stopwatch.id);
+        return { handled: true, response: `⏱️ Stopwatch stopped: ${this.notifications.formatTime(finalTime)}` };
+    }
+    
+    // STATUS COMMANDS
+    if (msgLower.includes('show alarms') || msgLower.includes('list alarms') || msgLower.includes('active alarms')) {
+        const alarms = this.notifications.getActiveAlarms();
+        if (alarms.length === 0) {
+            return { handled: true, response: '⏰ No active alarms' };
+        }
+        
+        const alarmList = alarms.map(alarm => 
+            `• ${alarm.time.toLocaleString()}: "${alarm.message}"`
+        ).join('\n');
+        
+        return { handled: true, response: `⏰ Active alarms:\n${alarmList}` };
+    }
+    
+    if (msgLower.includes('show timers') || msgLower.includes('list timers') || msgLower.includes('active timers')) {
+        const timers = this.notifications.getActiveTimers();
+        if (timers.length === 0) {
+            return { handled: true, response: '⏱️ No active timers' };
+        }
+        
+        const timerList = timers.map(timer => 
+            `• ${timer.remaining}s remaining: "${timer.message}"`
+        ).join('\n');
+        
+        return { handled: true, response: `⏱️ Active timers:\n${timerList}` };
+    }
+    
+    if (msgLower.includes('show stopwatches') || msgLower.includes('list stopwatches') || msgLower.includes('active stopwatches')) {
+        const stopwatches = this.notifications.getActiveStopwatches();
+        if (stopwatches.length === 0) {
+            return { handled: true, response: '⏱️ No active stopwatches' };
+        }
+        
+        const stopwatchList = stopwatches.map(sw => 
+            `• ${sw.id}: ${sw.formattedTime} (${sw.isRunning ? 'running' : 'paused'})`
+        ).join('\n');
+        
+        return { handled: true, response: `⏱️ Active stopwatches:\n${stopwatchList}` };
+    }
+    
+    return { handled: false };
+};
+
+ChatApp.prototype.addMessage = function(content, type) {
+    // Enhanced addMessage to handle system notifications
+    const originalAddMessage = this.constructor.prototype.addMessage;
+    
+    const messageDiv = document.createElement('div');
+    messageDiv.className = `message-bubble ${type}-message mb-3`;
+    
+    let iconClass = 'fas fa-robot';
+    let bgColor = 'bg-info';
+    let userName = 'Zobo';
+    let userTitle = 'Your AI Friend';
+    
+    if (type === 'user') {
+        iconClass = 'fas fa-user';
+        bgColor = 'bg-primary';
+        userName = 'You';
+        userTitle = '';
+    } else if (type === 'error') {
+        iconClass = 'fas fa-exclamation-circle';
+        bgColor = 'bg-danger';
+        userName = 'Error';
+        userTitle = '';
+    } else if (type === 'system') {
+        iconClass = 'fas fa-bell';
+        bgColor = 'bg-success';
+        userName = 'System';
+        userTitle = 'Notification';
+    }
+    
+    messageDiv.innerHTML = `
+        <div class="d-flex align-items-start">
+            <div class="avatar ${bgColor} rounded-circle me-3 d-flex align-items-center justify-content-center">
+                <i class="${iconClass} text-white"></i>
+            </div>
+            <div class="message-content">
+                <div class="message-header mb-1">
+                    <strong>${userName}</strong>
+                    ${userTitle ? `<small class="text-muted ms-2">${userTitle}</small>` : ''}
+                    <small class="text-muted ms-2">${new Date().toLocaleTimeString()}</small>
+                </div>
+                <div class="message-text">${content}</div>
+            </div>
+        </div>
+    `;
+    
+    this.messagesArea.appendChild(messageDiv);
+    this.scrollToBottom();
 };
 
 // Initialize chat application when DOM is loaded
