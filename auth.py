@@ -17,7 +17,7 @@ def init_auth(app):
         client_secret=os.environ.get("GOOGLE_CLIENT_SECRET"),
         server_metadata_url='https://accounts.google.com/.well-known/openid_configuration',
         client_kwargs={
-            'scope': 'openid email profile'
+            'scope': 'openid email profile https://www.googleapis.com/auth/calendar'
         }
     )
     
@@ -65,10 +65,23 @@ def create_auth_routes(app, oauth_clients):
     
     @app.route('/logout')
     def logout():
-        """Logout user"""
+        """Logout user with complete session cleanup"""
+        # Log the logout for security monitoring
+        user = session.get('user', {})
+        logging.info(f"User logout: {user.get('provider', 'unknown')} - {user.get('id', 'unknown')}")
+        
+        # Complete session cleanup to prevent data leakage
         session.clear()
+        
+        # Ensure browser session is completely invalidated
+        from flask import make_response
+        response = make_response(redirect(url_for('login')))
+        response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+        response.headers['Pragma'] = 'no-cache'
+        response.headers['Expires'] = '0'
+        
         flash('You have been logged out successfully.', 'success')
-        return redirect(url_for('login'))
+        return response
     
     # Google OAuth routes
     @app.route('/auth/google')
@@ -118,6 +131,23 @@ def create_auth_routes(app, oauth_clients):
                     'picture': user_info.get('picture'),
                     'provider': 'google'
                 }
+                
+                # Store calendar access token for authenticated user
+                if token.get('access_token'):
+                    session['google_calendar_token'] = {
+                        'access_token': token['access_token'],
+                        'refresh_token': token.get('refresh_token'),
+                        'expires_at': token.get('expires_at'),
+                        'token_type': token.get('token_type', 'Bearer')
+                    }
+                
+                # Initialize fresh session data for authenticated user
+                # This ensures no data leakage from guest/demo sessions
+                session['conversation'] = []
+                session['user_data_storage'] = {}
+                session['manual_calendar_events'] = []
+                session['connected_files'] = []
+                
                 flash(f'Welcome, {user_info["name"]}!', 'success')
                 return redirect(url_for('index'))
             else:
@@ -160,6 +190,13 @@ def create_auth_routes(app, oauth_clients):
                     'name': user_info.get('displayName'),
                     'provider': 'microsoft'
                 }
+                
+                # Initialize fresh session data for authenticated user
+                session['conversation'] = []
+                session['user_data_storage'] = {}
+                session['manual_calendar_events'] = []
+                session['connected_files'] = []
+                
                 flash(f'Welcome, {user_info.get("displayName", "User")}!', 'success')
                 return redirect(url_for('index'))
             else:
@@ -230,6 +267,13 @@ def create_auth_routes(app, oauth_clients):
                     'name': name,
                     'provider': 'apple'
                 }
+                
+                # Initialize fresh session data for authenticated user
+                session['conversation'] = []
+                session['user_data_storage'] = {}
+                session['manual_calendar_events'] = []
+                session['connected_files'] = []
+                
                 flash(f'Welcome, {name}!', 'success')
                 return redirect(url_for('index'))
             else:
@@ -328,14 +372,28 @@ def create_auth_routes(app, oauth_clients):
             flash('Demo authentication is not enabled', 'error')
             return redirect(url_for('login'))
         
-        # Create a demo user session
+        import secrets
+        import uuid
+        
+        # Create a unique demo user session (avoid hardcoded IDs)
+        demo_uuid = str(uuid.uuid4())
+        session_secret = secrets.token_hex(16)
+        demo_id = f"demo-{demo_uuid}-{session_secret}"
+        
         session['user'] = {
-            'id': 'demo-user-123',
+            'id': demo_id,
             'email': 'demo@zobo-app.com',
             'name': 'Demo User',
             'picture': None,
-            'provider': 'demo'
+            'provider': 'demo',
+            'session_id': session_secret
         }
+        
+        # Initialize isolated session data for demo user
+        session['conversation'] = []
+        session['user_data_storage'] = {}
+        session['manual_calendar_events'] = []
+        session['connected_files'] = []
         
         flash('Welcome, Demo User! You\'re now signed in.', 'success')
         return redirect(url_for('index'))
@@ -345,17 +403,29 @@ def create_auth_routes(app, oauth_clients):
     def guest_login():
         """Guest login for using Zobo without account"""
         import uuid
+        import secrets
         
-        # Create a guest user session with unique ID
-        guest_id = f"guest-{str(uuid.uuid4())[:8]}"
+        # Create a truly unique guest user session with cryptographically secure ID
+        # Use full UUID + session-specific secret for maximum uniqueness
+        guest_uuid = str(uuid.uuid4())
+        session_secret = secrets.token_hex(16)  # 32-character hex string
+        guest_id = f"guest-{guest_uuid}-{session_secret}"
+        
         session['user'] = {
             'id': guest_id,
             'email': None,
             'name': 'Guest User',
             'picture': None,
             'provider': 'guest',
-            'is_guest': True
+            'is_guest': True,
+            'session_id': session_secret  # Store session secret for additional verification
         }
+        
+        # Initialize isolated session data for this guest user
+        session['conversation'] = []
+        session['user_data_storage'] = {}
+        session['manual_calendar_events'] = []
+        session['connected_files'] = []
         
         # Show warning about app linking restrictions
         flash('You\'re using Zobo as a guest. Note: App linking and calendar features require signing in with Google.', 'warning')

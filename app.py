@@ -8,6 +8,7 @@ from datetime import datetime, timedelta
 from dateutil import parser
 from calendar_service import GoogleCalendarService
 from auth import init_auth, create_auth_routes, require_auth, require_google_auth
+from database import db
 
 # Voice API imports
 try:
@@ -219,9 +220,40 @@ calendar_service = GoogleCalendarService()
 @require_auth
 def index():
     """Main chat interface"""
-    # Initialize session conversation if not exists
+    user = session.get('user', {})
+    user_id = user.get('id')
+    
+    if user_id:
+        # Load user data from database and initialize session
+        user_profile = db.get_user(user_id)
+        if not user_profile and user_id:
+            # Create new user profile in database
+            user_data = {
+                'email': user.get('email'),
+                'name': user.get('name'),
+                'provider': user.get('provider')
+            }
+            db.save_user(user_id, user_data)
+        
+        # Load conversation history from database
+        if 'conversation' not in session:
+            session['conversation'] = db.get_conversation(user_id)
+        
+        # Initialize other session data from database
+        if 'manual_calendar_events' not in session:
+            session['manual_calendar_events'] = db.get_manual_events(user_id)
+        if 'connected_files' not in session:
+            session['connected_files'] = db.get_user_files(user_id)
+    
+    # Fallback initialization for session data
     if 'conversation' not in session:
         session['conversation'] = []
+    if 'user_data_storage' not in session:
+        session['user_data_storage'] = {}
+    if 'manual_calendar_events' not in session:
+        session['manual_calendar_events'] = []
+    if 'connected_files' not in session:
+        session['connected_files'] = []
     
     return render_template('index.html')
 
@@ -318,6 +350,11 @@ When discussing scheduling, always confirm details with the user before making c
             # Update session (keep only last 8 messages to prevent cookie overflow)
             session['conversation'] = conversation[-8:]
             session.modified = True
+            
+            # Save conversation to database for persistence
+            user_id = session.get('user', {}).get('id')
+            if user_id:
+                db.save_conversation(user_id, conversation)
             
             return jsonify({
                 'response': assistant_message,
@@ -684,9 +721,16 @@ def enhance_message_with_calendar_context(user_message):
 def extract_and_store_user_data(message, user_id):
     """Extract and store user-specific data from their message"""
     try:
-        # Get or create user data storage
+        # Get or create user data storage with enhanced security
         if 'user_data_storage' not in session:
             session['user_data_storage'] = {}
+        
+        # Additional security check: ensure user_id matches current session user
+        current_user = session.get('user', {})
+        if current_user.get('id') != user_id:
+            logging.warning(f"User ID mismatch: session={current_user.get('id')}, requested={user_id}")
+            # Return empty data for security
+            return {}
         
         user_data = session['user_data_storage'].get(user_id, {})
         message_lower = message.lower()
@@ -743,9 +787,15 @@ def extract_and_store_user_data(message, user_id):
                     user_data['last_updated'] = datetime.now().isoformat()
                 break
         
-        # Store updated user data
-        session['user_data_storage'][user_id] = user_data
-        session.modified = True
+        # Store updated user data with additional security validation
+        if user_id and len(user_id) > 5:  # Basic validation
+            session['user_data_storage'][user_id] = user_data
+            session.modified = True
+            
+            # Save to database for persistence
+            db.save_user(user_id, user_data)
+        else:
+            logging.warning(f"Invalid user_id in extract_and_store_user_data: {user_id}")
         
         return user_data
         
@@ -756,8 +806,17 @@ def extract_and_store_user_data(message, user_id):
 def get_user_data_context(user_id):
     """Get user-specific context for the AI assistant"""
     try:
-        user_data_storage = session.get('user_data_storage', {})
-        user_data = user_data_storage.get(user_id, {})
+        # Security check: ensure user_id matches current session user
+        current_user = session.get('user', {})
+        if current_user.get('id') != user_id:
+            logging.warning(f"User ID mismatch in get_user_data_context: session={current_user.get('id')}, requested={user_id}")
+            return "Remember to learn about this user as they share information about themselves."
+        
+        # Load user data from database first, fallback to session
+        user_data = db.get_user(user_id) or {}
+        if not user_data:
+            user_data_storage = session.get('user_data_storage', {})
+            user_data = user_data_storage.get(user_id, {})
         
         if not user_data:
             return "Remember to learn about this user as they share information about themselves."
@@ -852,6 +911,11 @@ def add_manual_event():
         session['manual_calendar_events'] = manual_events
         session.modified = True
         
+        # Save to database for persistence
+        user_id = session.get('user', {}).get('id')
+        if user_id:
+            db.save_manual_event(user_id, new_event)
+        
         return jsonify({
             'message': f'Got it! I\'ve noted that you have "{summary}" {time_description}',
             'event': new_event
@@ -934,6 +998,11 @@ def upload_file():
         session['connected_files'] = connected_files
         session.modified = True
         
+        # Save to database for persistence
+        user_id = session.get('user', {}).get('id')
+        if user_id:
+            db.save_user_file(user_id, file_info)
+        
         return jsonify({
             'message': f'File "{file.filename}" connected to Zobo successfully',
             'file_info': {
@@ -976,8 +1045,18 @@ def get_user_data():
     """Get user-specific data"""
     try:
         user_id = session.get('user', {}).get('id', 'unknown')
-        user_data_storage = session.get('user_data_storage', {})
-        user_data = user_data_storage.get(user_id, {})
+        
+        # Security: only return data for the current session user
+        current_user = session.get('user', {})
+        if current_user.get('id') != user_id:
+            logging.warning(f"Unauthorized user data access attempt: session={current_user.get('id')}, requested={user_id}")
+            return jsonify({'error': 'Unauthorized access'}), 403
+        
+        # Load from database first, fallback to session
+        user_data = db.get_user(user_id) or {}
+        if not user_data:
+            user_data_storage = session.get('user_data_storage', {})
+            user_data = user_data_storage.get(user_id, {})
         
         return jsonify({'user_data': user_data})
         
@@ -992,6 +1071,12 @@ def update_user_data():
     try:
         user_id = session.get('user', {}).get('id', 'unknown')
         data = request.get_json()
+        
+        # Security check: ensure user can only update their own data
+        current_user = session.get('user', {})
+        if current_user.get('id') != user_id:
+            logging.warning(f"Unauthorized user data update attempt: session={current_user.get('id')}, requested={user_id}")
+            return jsonify({'error': 'Unauthorized access'}), 403
         
         # Get or create user data storage
         if 'user_data_storage' not in session:
@@ -1012,6 +1097,9 @@ def update_user_data():
             user_data['last_updated'] = datetime.now().isoformat()
             session['user_data_storage'][user_id] = user_data
             session.modified = True
+            
+            # Save to database for persistence
+            db.save_user(user_id, user_data)
         
         return jsonify({
             'message': f'Updated {", ".join(updated_fields)}' if updated_fields else 'No changes made',
@@ -1028,6 +1116,13 @@ def delete_user_data_field(field):
     """Delete a specific user data field"""
     try:
         user_id = session.get('user', {}).get('id', 'unknown')
+        
+        # Security check: ensure user can only delete their own data
+        current_user = session.get('user', {})
+        if current_user.get('id') != user_id:
+            logging.warning(f"Unauthorized user data delete attempt: session={current_user.get('id')}, requested={user_id}")
+            return jsonify({'error': 'Unauthorized access'}), 403
+        
         user_data_storage = session.get('user_data_storage', {})
         user_data = user_data_storage.get(user_id, {})
         
@@ -1037,6 +1132,9 @@ def delete_user_data_field(field):
             session['user_data_storage'][user_id] = user_data
             session.modified = True
             
+            # Update database
+            db.save_user(user_id, user_data)
+            
             return jsonify({'message': f'Deleted {field} from user data'})
         else:
             return jsonify({'message': f'Field {field} not found'}), 404
@@ -1044,6 +1142,98 @@ def delete_user_data_field(field):
     except Exception as e:
         logging.error(f"Error deleting user data field: {str(e)}")
         return jsonify({'error': 'Failed to delete user data field'}), 500
+
+@app.route('/api/user-data/export', methods=['GET'])
+@require_auth
+def export_user_data():
+    """Export all user data for GDPR compliance"""
+    try:
+        user_id = session.get('user', {}).get('id')
+        if not user_id:
+            return jsonify({'error': 'User not authenticated'}), 401
+        
+        # Export all user data from database
+        export_data = db.export_user_data(user_id)
+        
+        if export_data:
+            return jsonify({
+                'message': 'User data exported successfully',
+                'data': export_data
+            })
+        else:
+            return jsonify({'error': 'Failed to export user data'}), 500
+            
+    except Exception as e:
+        logging.error(f"Error exporting user data: {str(e)}")
+        return jsonify({'error': 'Failed to export user data'}), 500
+
+@app.route('/api/user-data/clear-all', methods=['DELETE'])
+@require_auth
+def clear_all_user_data():
+    """Clear all user data for privacy"""
+    try:
+        user_id = session.get('user', {}).get('id')
+        if not user_id:
+            return jsonify({'error': 'User not authenticated'}), 401
+        
+        # Delete all user data from database
+        success = db.delete_user_data(user_id)
+        
+        if success:
+            # Clear session data as well
+            session['conversation'] = []
+            session['user_data_storage'] = {}
+            session['manual_calendar_events'] = []
+            session['connected_files'] = []
+            session.modified = True
+            
+            return jsonify({'message': 'All user data cleared successfully'})
+        else:
+            return jsonify({'error': 'Failed to clear user data'}), 500
+            
+    except Exception as e:
+        logging.error(f"Error clearing user data: {str(e)}")
+        return jsonify({'error': 'Failed to clear user data'}), 500
+
+@app.route('/api/user-preferences', methods=['GET'])
+@require_auth
+def get_user_preferences():
+    """Get user preferences"""
+    try:
+        user_id = session.get('user', {}).get('id')
+        if not user_id:
+            return jsonify({'error': 'User not authenticated'}), 401
+        
+        preferences = db.get_user_preferences(user_id)
+        return jsonify({'preferences': preferences})
+        
+    except Exception as e:
+        logging.error(f"Error getting user preferences: {str(e)}")
+        return jsonify({'error': 'Failed to get user preferences'}), 500
+
+@app.route('/api/user-preferences', methods=['POST'])
+@require_auth
+def save_user_preferences():
+    """Save user preferences"""
+    try:
+        user_id = session.get('user', {}).get('id')
+        if not user_id:
+            return jsonify({'error': 'User not authenticated'}), 401
+        
+        data = request.get_json()
+        if not data:
+            return jsonify({'error': 'No preferences data provided'}), 400
+        
+        success = db.save_user_preferences(user_id, data)
+        
+        if success:
+            return jsonify({'message': 'Preferences saved successfully'})
+        else:
+            return jsonify({'error': 'Failed to save preferences'}), 500
+            
+    except Exception as e:
+        logging.error(f"Error saving user preferences: {str(e)}")
+        return jsonify({'error': 'Failed to save preferences'}), 500
 
 # Voice API endpoints
 @app.route('/api/voice/speak', methods=['POST'])

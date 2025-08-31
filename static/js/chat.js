@@ -46,6 +46,7 @@ class ChatApp {
         this.initializeWakeWord();
         this.loadUserInfo();
         this.initializeSettings();
+        this.loadUserPreferences();
     }
     
     initializeEventListeners() {
@@ -157,6 +158,9 @@ class ChatApp {
                 this.addMessage(data.response, 'assistant');
                 this.lastAssistantMessage = data.response; // Store for voice functionality
                 this.hideStatusAlert();
+                
+                // Check for auto-extracted user data and sync with profile settings
+                this.checkForProfileUpdates(message);
             } else {
                 console.error('Server error:', response.status, data);
                 this.addMessage(`Error: ${data.error || 'Server error'}`, 'error');
@@ -897,7 +901,7 @@ ChatApp.prototype.initializeSettings = function() {
         // Save settings
         if (saveSettingsBtn) {
             saveSettingsBtn.addEventListener('click', () => {
-                this.saveSettings();
+                this.saveAllSettings();
             });
         }
         
@@ -1768,6 +1772,258 @@ ChatApp.prototype.disableConnectButtons = function() {
     if (googleCalendarStatus) {
         googleCalendarStatus.textContent = 'Requires Sign In';
         googleCalendarStatus.className = 'badge bg-secondary me-2';
+    }
+};
+
+// Auto-sync profile data from chat conversations
+ChatApp.prototype.checkForProfileUpdates = async function(userMessage) {
+    try {
+        // Wait a bit for the server to process the message and extract user data
+        setTimeout(async () => {
+            const updatedUserData = await this.getUserData();
+            
+            // Check if we have new data that should be synced to the settings form
+            const profileName = document.getElementById('profileName');
+            const profileAge = document.getElementById('profileAge');
+            const profileSchool = document.getElementById('profileSchool');
+            const profileGrade = document.getElementById('profileGrade');
+            const profileStatus = document.getElementById('profileStatus');
+            
+            let hasUpdates = false;
+            
+            // Update form fields if new data is available
+            if (updatedUserData.name && profileName && (!profileName.value || profileName.value !== updatedUserData.name)) {
+                profileName.value = updatedUserData.name;
+                hasUpdates = true;
+            }
+            
+            if (updatedUserData.age && profileAge && (!profileAge.value || profileAge.value != updatedUserData.age)) {
+                profileAge.value = updatedUserData.age;
+                hasUpdates = true;
+            }
+            
+            if (updatedUserData.school && profileSchool && (!profileSchool.value || profileSchool.value !== updatedUserData.school)) {
+                profileSchool.value = updatedUserData.school;
+                hasUpdates = true;
+            }
+            
+            if (updatedUserData.grade && profileGrade && (!profileGrade.value || profileGrade.value !== updatedUserData.grade)) {
+                profileGrade.value = updatedUserData.grade;
+                hasUpdates = true;
+            }
+            
+            // Show notification if profile was auto-updated
+            if (hasUpdates && profileStatus) {
+                profileStatus.textContent = '✨ Profile auto-updated from chat! Data saved automatically.';
+                profileStatus.className = 'small text-success';
+                
+                // Add visual highlight to updated form
+                const profileCard = document.querySelector('.modal-body .card:last-child');
+                if (profileCard) {
+                    profileCard.style.border = '2px solid #28a745';
+                    profileCard.style.borderRadius = '8px';
+                    
+                    // Remove highlight after 3 seconds
+                    setTimeout(() => {
+                        profileCard.style.border = '';
+                    }, 3000);
+                }
+                
+                // Show a subtle notification in the main chat if settings modal is not open
+                const settingsModal = document.getElementById('settingsModal');
+                if (!settingsModal || !settingsModal.classList.contains('show')) {
+                    this.showStatusAlert('success', '✨ Your profile was automatically updated based on our conversation!', 4000);
+                }
+            }
+        }, 1500); // Wait 1.5 seconds for server processing
+        
+    } catch (error) {
+        console.error('Error checking for profile updates:', error);
+    }
+};
+
+// Enhanced status alert with custom duration
+ChatApp.prototype.showStatusAlert = function(type, message, duration = 5000) {
+    const alertElement = document.getElementById('statusAlert');
+    const messageElement = document.getElementById('statusMessage');
+    
+    if (!alertElement || !messageElement) return;
+    
+    // Remove existing classes
+    alertElement.className = 'alert alert-dismissible fade show';
+    
+    // Add appropriate class based on type
+    switch (type) {
+        case 'success':
+            alertElement.classList.add('alert-success');
+            break;
+        case 'warning':
+            alertElement.classList.add('alert-warning');
+            break;
+        case 'error':
+        case 'danger':
+            alertElement.classList.add('alert-danger');
+            break;
+        default:
+            alertElement.classList.add('alert-info');
+    }
+    
+    messageElement.textContent = message;
+    alertElement.classList.remove('d-none');
+    
+    // Auto-hide after specified duration
+    if (duration > 0) {
+        setTimeout(() => {
+            alertElement.classList.add('d-none');
+        }, duration);
+    }
+};
+
+// Load user preferences from database
+ChatApp.prototype.loadUserPreferences = async function() {
+    try {
+        const response = await fetch('/api/user-preferences');
+        if (response.ok) {
+            const data = await response.json();
+            const prefs = data.preferences;
+            
+            // Apply loaded preferences
+            if (prefs.theme) {
+                this.changeTheme(prefs.theme);
+                const themeSelect = document.getElementById('themeSelect');
+                if (themeSelect) themeSelect.value = prefs.theme;
+            }
+            
+            if (prefs.font_size) {
+                this.changeFontSize(prefs.font_size);
+                const fontSizeSelect = document.getElementById('fontSizeSelect');
+                if (fontSizeSelect) fontSizeSelect.value = prefs.font_size;
+            }
+            
+            if (prefs.compact_mode !== undefined) {
+                this.toggleCompactMode(prefs.compact_mode);
+                const compactModeToggle = document.getElementById('compactModeToggle');
+                if (compactModeToggle) compactModeToggle.checked = prefs.compact_mode;
+            }
+            
+            if (prefs.save_conversations !== undefined) {
+                const saveConversationsToggle = document.getElementById('saveConversationsToggle');
+                if (saveConversationsToggle) saveConversationsToggle.checked = prefs.save_conversations;
+            }
+            
+            if (prefs.share_data !== undefined) {
+                const shareDataToggle = document.getElementById('shareDataToggle');
+                if (shareDataToggle) shareDataToggle.checked = prefs.share_data;
+            }
+        }
+    } catch (error) {
+        console.error('Error loading user preferences:', error);
+    }
+};
+
+// Save all settings
+ChatApp.prototype.saveAllSettings = async function() {
+    try {
+        // Get all settings values
+        const theme = document.getElementById('themeSelect')?.value || 'dark';
+        const fontSize = document.getElementById('fontSizeSelect')?.value || 'medium';
+        const compactMode = document.getElementById('compactModeToggle')?.checked || false;
+        const saveConversations = document.getElementById('saveConversationsToggle')?.checked || true;
+        const shareData = document.getElementById('shareDataToggle')?.checked || false;
+        
+        const preferences = {
+            theme,
+            font_size: fontSize,
+            compact_mode: compactMode,
+            save_conversations: saveConversations,
+            share_data: shareData
+        };
+        
+        // Save preferences
+        const response = await fetch('/api/user-preferences', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(preferences)
+        });
+        
+        if (response.ok) {
+            this.showStatusAlert('success', 'Settings saved successfully!');
+            
+            // Apply theme and font size immediately
+            this.changeTheme(theme);
+            this.changeFontSize(fontSize);
+            this.toggleCompactMode(compactMode);
+        } else {
+            this.showStatusAlert('error', 'Error saving settings. Please try again.');
+        }
+    } catch (error) {
+        console.error('Error saving settings:', error);
+        this.showStatusAlert('error', 'Error saving settings. Please try again.');
+    }
+};
+
+// Enhanced clear all data with database integration
+ChatApp.prototype.clearAllData = async function() {
+    if (!confirm('⚠️ This will permanently delete ALL your data including profile, conversations, and files. This cannot be undone. Are you sure?')) {
+        return;
+    }
+    
+    if (!confirm('This is your final warning. All data will be permanently deleted. Continue?')) {
+        return;
+    }
+    
+    try {
+        const response = await fetch('/api/user-data/clear-all', {
+            method: 'DELETE'
+        });
+        
+        if (response.ok) {
+            this.showStatusAlert('success', 'All user data cleared successfully. Refreshing page...');
+            
+            // Clear local display
+            this.messagesArea.innerHTML = '';
+            
+            // Refresh page after 2 seconds
+            setTimeout(() => {
+                window.location.reload();
+            }, 2000);
+        } else {
+            this.showStatusAlert('error', 'Error clearing data. Please try again.');
+        }
+    } catch (error) {
+        console.error('Error clearing data:', error);
+        this.showStatusAlert('error', 'Error clearing data. Please try again.');
+    }
+};
+
+// Enhanced export data with complete database export
+ChatApp.prototype.exportData = async function() {
+    try {
+        const response = await fetch('/api/user-data/export');
+        const data = await response.json();
+        
+        if (response.ok && data.data) {
+            const dataStr = JSON.stringify(data.data, null, 2);
+            const blob = new Blob([dataStr], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `zobo-complete-data-${new Date().toISOString().split('T')[0]}.json`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            
+            this.showStatusAlert('success', 'Complete user data exported successfully!');
+        } else {
+            this.showStatusAlert('error', 'Error exporting data. Please try again.');
+        }
+    } catch (error) {
+        console.error('Error exporting data:', error);
+        this.showStatusAlert('error', 'Error exporting data. Please try again.');
     }
 };
 
