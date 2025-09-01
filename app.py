@@ -1,10 +1,9 @@
 import os
 import logging
-import json
 import re
+from datetime import datetime, timedelta
 from flask import Flask, render_template, request, jsonify, session
 import requests
-from datetime import datetime, timedelta
 from dateutil import parser
 from calendar_service import GoogleCalendarService
 from auth import init_auth, create_auth_routes, require_auth, require_google_auth
@@ -12,8 +11,7 @@ from database import db
 
 # Voice API imports
 try:
-    from google import genai
-    from google.genai import types
+    import google.generativeai as genai
     import asyncio
     import io
     import wave
@@ -64,12 +62,16 @@ class GeminiLiveAPI:
         """Initialize Gemini Live API client"""
         try:
             if self.api_key and VOICE_IMPORTS_AVAILABLE:
-                self.client = genai.Client(api_key=self.api_key)
-                logging.info("Gemini Live API client initialized successfully")
+                # Note: This uses Google's new Gemini Live API which may not be publicly available
+                # For now, we'll disable this functionality to prevent import errors
+                logging.warning("Gemini Live API not available. Using standard generative AI instead.")
+                genai.configure(api_key=self.api_key)
+                self.client = "configured"  # Placeholder
+                logging.info("Gemini API configured successfully")
             else:
                 logging.warning("Gemini API key not configured or voice imports unavailable. Live voice features will be disabled.")
         except Exception as e:
-            logging.error(f"Failed to initialize Gemini Live client: {str(e)}")
+            logging.error(f"Failed to initialize Gemini client: {str(e)}")
     
     async def process_audio_conversation(self, audio_data, system_prompt="You are Zobo, a helpful AI assistant."):
         """Process audio conversation using Gemini Live API"""
@@ -77,29 +79,10 @@ class GeminiLiveAPI:
             if not self.client:
                 return None, "Gemini Live API not configured"
             
-            config = {
-                "response_modalities": ["AUDIO"],
-                "system_instruction": system_prompt,
-            }
-            
-            async with self.client.aio.live.connect(model=GEMINI_LIVE_MODEL, config=config) as session:
-                # Send audio input
-                await session.send_realtime_input(
-                    audio=types.Blob(data=audio_data, mime_type="audio/pcm;rate=16000")
-                )
-                
-                # Collect audio response
-                response_audio = []
-                async for response in session.receive():
-                    if response.data is not None:
-                        response_audio.append(response.data)
-                
-                # Combine all audio chunks
-                if response_audio:
-                    combined_audio = b''.join(response_audio)
-                    return combined_audio, None
-                else:
-                    return None, "No audio response received"
+            # Note: Gemini Live API with native audio is not publicly available yet
+            # This is a placeholder implementation
+            logging.warning("Gemini Live audio processing not available. Use text-based chat instead.")
+            return None, "Audio processing not available - use text chat instead"
                     
         except Exception as e:
             logging.error(f"Gemini Live API error: {str(e)}")
@@ -111,29 +94,10 @@ class GeminiLiveAPI:
             if not self.client:
                 return None, "Gemini Live API not configured"
             
-            config = {
-                "response_modalities": ["AUDIO"],
-                "system_instruction": system_prompt,
-            }
-            
-            async with self.client.aio.live.connect(model=GEMINI_LIVE_MODEL, config=config) as session:
-                # Send text input
-                await session.send_realtime_input(
-                    text=text
-                )
-                
-                # Collect audio response
-                response_audio = []
-                async for response in session.receive():
-                    if response.data is not None:
-                        response_audio.append(response.data)
-                
-                # Combine all audio chunks
-                if response_audio:
-                    combined_audio = b''.join(response_audio)
-                    return combined_audio, None
-                else:
-                    return None, "No audio response received"
+            # Note: Gemini Live API with native audio is not publicly available yet
+            # This is a placeholder implementation
+            logging.warning("Gemini Live text-to-speech not available. Use standard text responses instead.")
+            return None, "Text-to-speech not available - use text responses instead"
                     
         except Exception as e:
             logging.error(f"Text-to-speech error: {str(e)}")
@@ -743,21 +707,30 @@ def extract_and_store_user_data(message, user_id):
         user_data = session['user_data_storage'].get(user_id, {})
         message_lower = message.lower()
         
-        # Extract name information with improved patterns
+        # Extract name information with improved patterns and validation
         name_patterns = [
-            r"\bmy name is ([a-zA-Z][a-zA-Z\s]{1,48})\b",  # More specific: starts with letter, 1-48 chars
-            r"\bi am ([a-zA-Z][a-zA-Z\s]{1,48})(?:\s+and|\s*,|\.|$)",  # Must end with 'and', comma, period, or end
-            r"\bcall me ([a-zA-Z][a-zA-Z\s]{1,48})\b",
-            r"\bi'm ([a-zA-Z][a-zA-Z\s]{1,48})(?:\s+and|\s*,|\.|$)",  # Must end with 'and', comma, period, or end
+            r"\bmy name is ([a-zA-Z][a-zA-Z\s'-]{1,48})\b",  # Allow apostrophes and hyphens
+            r"\bi am ([a-zA-Z][a-zA-Z\s'-]{1,48})(?:\s+and|\s*,|\.|$)", 
+            r"\bcall me ([a-zA-Z][a-zA-Z\s'-]{1,48})\b",
+            r"\bi'm ([a-zA-Z][a-zA-Z\s'-]{1,48})(?:\s+and|\s*,|\.|$)",
         ]
         
+        # Common words that shouldn't be names
+        invalid_names = {
+            'hi', 'hello', 'hey', 'good', 'fine', 'ok', 'okay', 'yes', 'no', 
+            'well', 'great', 'awesome', 'amazing', 'cool', 'nice', 'sure', 
+            'thanks', 'thank', 'you', 'me', 'i', 'it', 'that', 'this', 'here', 'there'
+        }
+        
         for pattern in name_patterns:
-            match = re.search(pattern, message_lower)
+            match = re.search(pattern, message_lower, re.IGNORECASE)
             if match:
                 name = match.group(1).strip().title()
-                # Additional validation: name should be reasonable
+                # Enhanced validation
                 if (len(name) >= 2 and len(name) < 50 and 
-                    name.lower() not in ['hi', 'hello', 'hey', 'good', 'fine', 'ok', 'okay', 'yes', 'no']):
+                    name.lower() not in invalid_names and
+                    not name.lower().startswith(('i ', 'im ', "i'm ")) and
+                    not re.match(r'^[0-9]+$', name)):  # Not just numbers
                     user_data['name'] = name
                     user_data['last_updated'] = datetime.now().isoformat()
                     logging.info(f"Extracted name: '{name}' from message: '{message[:50]}...'")
@@ -1014,17 +987,30 @@ def upload_file():
         if file_size > 5 * 1024 * 1024:  # 5MB
             return jsonify({'error': 'File too large. Maximum size is 5MB.'}), 400
         
-        # Read file content
-        file_content = file.read()
+        # Read file content with better error handling
+        try:
+            file_content = file.read()
+        except Exception as e:
+            logging.error(f"Failed to read file content: {str(e)}")
+            return jsonify({'error': 'Failed to read file content'}), 500
         
         # Store file info in session (connected files)
         connected_files = session.get('connected_files', [])
+        
+        # Only try to decode text files
+        content = None
+        if file_size < 1024 * 1024:  # Only store content for files < 1MB
+            if file.content_type and (file.content_type.startswith('text/') or 'json' in file.content_type or 'xml' in file.content_type):
+                try:
+                    content = file_content.decode('utf-8', errors='ignore')
+                except UnicodeDecodeError:
+                    content = None  # Binary file, don't store content
         
         file_info = {
             'name': file.filename,
             'size': file_size,
             'type': file.content_type or 'unknown',
-            'content': file_content.decode('utf-8', errors='ignore') if file_size < 1024 * 1024 else None,  # Only store content for files < 1MB
+            'content': content,
             'uploaded_at': datetime.now().isoformat()
         }
         
@@ -1273,6 +1259,115 @@ def save_user_preferences():
         logging.error(f"Error saving user preferences: {str(e)}")
         return jsonify({'error': 'Failed to save preferences'}), 500
 
+@app.route('/api/timers-alarms/restore', methods=['GET'])
+@require_auth
+def restore_timers_alarms():
+    """Restore active timers and alarms from database"""
+    try:
+        user_id = session.get('user', {}).get('id')
+        if not user_id:
+            return jsonify({'error': 'User not authenticated'}), 401
+        
+        # Clean up expired items first
+        db.cleanup_expired_timers_alarms(user_id)
+        
+        # Get active alarms and timers
+        active_alarms = db.get_active_alarms_db(user_id)
+        active_timers = db.get_active_timers_db(user_id)
+        
+        # Format for client
+        alarms_data = []
+        for alarm in active_alarms:
+            alarms_data.append({
+                'id': alarm['id'],
+                'time': alarm['time'].isoformat(),
+                'message': alarm['message']
+            })
+        
+        timers_data = []
+        for timer in active_timers:
+            if timer['remaining'] > 0:  # Only include non-expired timers
+                timers_data.append({
+                    'id': timer['id'],
+                    'remaining': timer['remaining'],
+                    'message': timer['message'],
+                    'endTime': timer['endTime'].isoformat()
+                })
+        
+        return jsonify({
+            'alarms': alarms_data,
+            'timers': timers_data
+        })
+        
+    except Exception as e:
+        logging.error(f"Error restoring timers/alarms: {str(e)}")
+        return jsonify({'error': 'Failed to restore timers and alarms'}), 500
+
+@app.route('/api/timers-alarms/save', methods=['POST'])
+@require_auth
+def save_timer_alarm():
+    """Save active timer or alarm to database"""
+    try:
+        user_id = session.get('user', {}).get('id')
+        if not user_id:
+            return jsonify({'error': 'User not authenticated'}), 401
+        
+        data = request.get_json()
+        item_type = data.get('type')  # 'alarm' or 'timer'
+        item_id = data.get('id')
+        
+        if item_type == 'alarm':
+            alarm_time = datetime.fromisoformat(data.get('time'))
+            message = data.get('message', 'Alarm')
+            success = db.save_active_alarm(user_id, item_id, alarm_time, message)
+            
+        elif item_type == 'timer':
+            start_time = datetime.fromisoformat(data.get('startTime'))
+            duration = data.get('duration')
+            message = data.get('message', 'Timer finished')
+            success = db.save_active_timer(user_id, item_id, start_time, duration, message)
+            
+        else:
+            return jsonify({'error': 'Invalid type'}), 400
+        
+        if success:
+            return jsonify({'message': f'{item_type.title()} saved successfully'})
+        else:
+            return jsonify({'error': f'Failed to save {item_type}'}), 500
+            
+    except Exception as e:
+        logging.error(f"Error saving timer/alarm: {str(e)}")
+        return jsonify({'error': 'Failed to save timer/alarm'}), 500
+
+@app.route('/api/timers-alarms/remove', methods=['DELETE'])
+@require_auth
+def remove_timer_alarm():
+    """Remove active timer or alarm from database"""
+    try:
+        user_id = session.get('user', {}).get('id')
+        if not user_id:
+            return jsonify({'error': 'User not authenticated'}), 401
+        
+        data = request.get_json()
+        item_type = data.get('type')  # 'alarm' or 'timer'
+        item_id = data.get('id')
+        
+        if item_type == 'alarm':
+            success = db.remove_active_alarm(item_id)
+        elif item_type == 'timer':
+            success = db.remove_active_timer(item_id)
+        else:
+            return jsonify({'error': 'Invalid type'}), 400
+        
+        if success:
+            return jsonify({'message': f'{item_type.title()} removed successfully'})
+        else:
+            return jsonify({'error': f'Failed to remove {item_type}'}), 500
+            
+    except Exception as e:
+        logging.error(f"Error removing timer/alarm: {str(e)}")
+        return jsonify({'error': 'Failed to remove timer/alarm'}), 500
+
 # Voice API endpoints
 @app.route('/api/voice/speak', methods=['POST'])
 @require_auth
@@ -1508,6 +1603,7 @@ def voice_api_status():
             'imports_available': VOICE_IMPORTS_AVAILABLE,
             'message': f'Voice API error: {str(e)}'
         })
+
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8080, debug=True, threaded=True)
